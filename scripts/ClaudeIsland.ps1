@@ -68,6 +68,7 @@ $script:cfg = [ordered]@{
     musicPausedSeconds = 4          # keep the music pill this long after pausing
     clickThrough       = $true      # clicks go through the pill to what's under it; hold Ctrl to hover/click the pill
     peekOpacity        = 0.25       # with click-through on, the pill fades to this while the cursor is over it (1 = no fade)
+    fullscreenNotch    = $true      # while a fullscreen app is in front, swap the pill for a slim notch at the top edge
     mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a companions folder name
     # --- colors
     accent             = '#D97857'  # working (Claude coral)
@@ -166,6 +167,32 @@ public static class IslandNative {
                 px[t] = (byte)(s0 / 3); px[t + 1] = (byte)(s1 / 3); px[t + 2] = (byte)(s2 / 3);
             }
         }
+    }
+
+    // Fullscreen: the foreground window covers its whole monitor (and isn't the desktop or just
+    // a maximized window with a title bar). Returns that monitor's rect in pixels, or null.
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+    [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; }
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+    [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr m, ref MONITORINFO mi);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+    public static int[] FullscreenRect(IntPtr self1, IntPtr self2) {
+        IntPtr h = GetForegroundWindow();
+        if (h == IntPtr.Zero || h == self1 || h == self2 || !IsWindowVisible(h)) return null;
+        var cls = new System.Text.StringBuilder(64); GetClassName(h, cls, 64);
+        switch (cls.ToString()) { case "Progman": case "WorkerW": case "Shell_TrayWnd": case "Shell_SecondaryTrayWnd": return null; }
+        bool caption = (GetWindowLong(h, -16) & 0x00C00000) == 0x00C00000;
+        if (IsZoomed(h) && caption) return null;
+        RECT r; if (!GetWindowRect(h, out r)) return null;
+        var mi = new MONITORINFO(); mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+        if (!GetMonitorInfo(MonitorFromWindow(h, 2), ref mi)) return null;
+        var m = mi.rcMonitor;
+        if (r.L <= m.L && r.T <= m.T && r.R >= m.R && r.B >= m.B) return new[] { m.L, m.T, m.R, m.B };
+        return null;
     }
 
     // Album art: turn the WinRT stream Windows gives us into a classic COM IStream and read it all.
@@ -501,6 +528,76 @@ $win.Add_SourceInitialized({
     $ex = [IslandNative]::GetWindowLong($h, -20)
     [void][IslandNative]::SetWindowLong($h, -20, ($ex -bor 0x80 -bor 0x08000000))  # TOOLWINDOW | NOACTIVATE
 })
+
+# ---- compact notch: shown instead of the pill while a fullscreen app is in front ----
+# A slim black tab flush with the top edge: Claude's status icon on the left, the time on the right.
+[xml]$notchXaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Claude Island Notch" WindowStyle="None" AllowsTransparency="True"
+        Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False"
+        ResizeMode="NoResize" SizeToContent="WidthAndHeight" UseLayoutRounding="True">
+  <Border x:Name="NBar" Background="#000000" CornerRadius="0,0,11,11" Height="28" MinWidth="150" Padding="11,0,13,0">
+    <DockPanel LastChildFill="False">
+      <Path x:Name="NIcon" DockPanel.Dock="Left" Width="13" Height="13" VerticalAlignment="Center" Stretch="Uniform"
+            Data="M6.5,0 L6.5,13 M0,6.5 L13,6.5 M1.9,1.9 L11.1,11.1 M11.1,1.9 L1.9,11.1"
+            Stroke="#D97857" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+      <TextBlock x:Name="NText" DockPanel.Dock="Right" Margin="24,0,0,0" VerticalAlignment="Center"
+                 Foreground="#D97857" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="13" FontWeight="SemiBold"/>
+    </DockPanel>
+  </Border>
+</Window>
+"@
+$nwin  = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $notchXaml))
+$uiNIcon = $nwin.FindName('NIcon'); $uiNText = $nwin.FindName('NText')
+$script:notchHwnd = [IntPtr]::Zero
+$script:notchOn = $false; $script:notchMon = $null; $script:notchMode = ''
+$nwin.Add_SourceInitialized({
+    $h = (New-Object System.Windows.Interop.WindowInteropHelper($nwin)).Handle
+    $script:notchHwnd = $h
+    $ex = [IslandNative]::GetWindowLong($h, -20)
+    [void][IslandNative]::SetWindowLong($h, -20, ($ex -bor 0x20 -bor 0x80 -bor 0x08000000))  # TRANSPARENT | TOOLWINDOW | NOACTIVATE
+})
+function Place-Notch {
+    $r = $script:notchMon
+    if (-not $r -or $nwin.ActualWidth -le 0) { return }
+    $src = [System.Windows.PresentationSource]::FromVisual($win)
+    $k = if ($src) { $src.CompositionTarget.TransformFromDevice.M11 } else { 1 }
+    $nwin.Left = ($r[0] + ($r[2] - $r[0]) / 2) * $k - $nwin.ActualWidth / 2
+    $nwin.Top  = $r[1] * $k
+}
+$nwin.Add_SizeChanged({ Place-Notch })
+# The fullscreen monitor's rect in pixels, or $null when nothing fullscreen is in front
+function Get-Fullscreen {
+    if (-not $script:cfg.fullscreenNotch) { return $null }
+    try { [IslandNative]::FullscreenRect($script:mainHwnd, $script:notchHwnd) } catch { $null }
+}
+function Show-Notch($mode, $pick, $now, $mon) {
+    switch ($mode) {
+        'working' { $c = $script:cfg.accent;     $t = Format-Elapsed ($now - [int64]$pick.started) }
+        'needs'   { $c = $script:cfg.needsColor; $t = 'Needs you' }
+        'done'    { $c = $script:cfg.doneColor;  $t = Format-Elapsed ([int64]$pick.finished - [int64]$pick.started) }
+    }
+    $b = New-Brush ([string]$c)
+    $uiNIcon.Stroke = $b; $uiNText.Foreground = $b; $uiNText.Text = $t
+    if ($mode -ne $script:notchMode) {
+        $script:notchMode = $mode
+        if ($mode -eq 'working') { Loop $uiNIcon $OpacityProp 1 0.35 900 $true (Sine) } else { Stop-Anim $uiNIcon $OpacityProp; $uiNIcon.Opacity = 1 }
+    }
+    $script:notchMon = $mon
+    if (-not $script:notchOn) {
+        $script:notchOn = $true
+        $nwin.Opacity = 0; $nwin.Show()
+        Animate $nwin $OpacityProp 1 150
+    }
+    Place-Notch
+    $nwin.Topmost = $false; $nwin.Topmost = $true
+}
+function Hide-Notch {
+    if (-not $script:notchOn) { return }
+    $script:notchOn = $false; $script:notchMode = ''
+    Stop-Anim $nwin $OpacityProp; $nwin.Hide()
+}
 
 # ---- mascot -------------------------------------------------------------
 $script:mood = 'normal'
@@ -1263,6 +1360,14 @@ function Update-Island {
         elseif ($done.Count  -gt 0) { $pick = $done[0];  $mode = 'done' }
         elseif ($work.Count  -gt 0 -and $script:cfg.showWorking) { $pick = $work[0]; $mode = 'working' }
 
+        $fs = Get-Fullscreen
+        if ($fs) {
+            Hide-Pill; $script:lastKey = ''
+            if ($pick) { Show-Notch $mode $pick $now $fs } else { Hide-Notch }
+            return
+        }
+        Hide-Notch
+
         if (-not $pick) {
             $m = $script:music
             if ($m -and ($m.playing -or $script:hover -or ($script:pausedAt -and ($now - $script:pausedAt) -lt ([int]$script:cfg.musicPausedSeconds * 1000)))) {
@@ -1443,6 +1548,7 @@ $miTest.Add_Click({ Start-Test })
 [void]$menu.Items.Add((New-Toggle 'Show while Claude works' 'showWorking'))
 [void]$menu.Items.Add((New-Toggle 'Now playing' 'music'))
 [void]$menu.Items.Add((New-Toggle 'Click through (hold Ctrl to use)' 'clickThrough'))
+[void]$menu.Items.Add((New-Toggle 'Compact notch in fullscreen' 'fullscreenNotch'))
 
 function Set-Companion($name) {
     $script:cfg.mascot = [string]$name; Save-Config; Apply-Companion; Mascot-Hop 'perk'
