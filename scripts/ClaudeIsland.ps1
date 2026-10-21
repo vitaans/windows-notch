@@ -81,7 +81,7 @@ $script:cfg = [ordered]@{
     peekOpacity        = 0.25       # with click-through on, the pill fades to this while the cursor is over it (1 = no fade)
     fullscreenNotch    = $true      # while a fullscreen app is in front, swap the pill for a slim notch at the top edge
     expandedWidth      = 400        # size of the expanded island, so its buttons are always in the same place
-    expandedHeight     = 0          # 0 = just tall enough for the tallest panel; set a number to make it taller
+    expandedHeight     = 0          # 0 = fits the open panel (the buttons stay put either way); a number sets a minimum
     expandedOpacity    = 0.92       # background darkness while expanded (0 to 1), so text stays readable
     fullscreenClock    = $true      # in fullscreen, the notch shows the time when nothing else is going on
     popups             = $true      # short notices in the island (and the fullscreen notch); each kind below can be turned off
@@ -500,6 +500,26 @@ try {
           </Grid>
         </DockPanel>
 
+        <!-- Panel buttons, shown while expanded: music on the left, stats on the right. Right under the
+             top row, so they stay in the same place whatever panel is open -->
+        <Grid x:Name="Tools" Visibility="Collapsed" Margin="2,10,2,0">
+          <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
+            <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <Border x:Name="BtnWeatherPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  HorizontalAlignment="Center" Cursor="Hand" ToolTip="Weather">
+            <TextBlock Text="&#x2600;" FontFamily="Segoe UI Symbol" FontSize="14"
+                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  HorizontalAlignment="Right" Cursor="Hand" ToolTip="System stats">
+            <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+        </Grid>
+
         <!-- Claude sessions (hover) -->
         <StackPanel x:Name="Details" Visibility="Collapsed">
           <StackPanel Margin="4,10,0,2">
@@ -583,29 +603,10 @@ try {
           </StackPanel>
         </StackPanel>
 
-        <!-- room for the panel buttons below -->
-        <Border x:Name="ToolsSpace" Height="42" Visibility="Collapsed"/>
+        <Border x:Name="ToolsSpace" Height="4" Visibility="Collapsed"/>
       </StackPanel>
 
-      <!-- Panel buttons, shown while expanded: music on the left, stats on the right. Pinned to the
-           bottom of the (fixed-size) expanded island, so they never move -->
-      <Grid x:Name="Tools" Visibility="Collapsed" VerticalAlignment="Bottom" Margin="12,0,16,10">
-        <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
-          <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                     Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Border>
-        <Border x:Name="BtnWeatherPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                HorizontalAlignment="Center" Cursor="Hand" ToolTip="Weather">
-          <TextBlock Text="&#x2600;" FontFamily="Segoe UI Symbol" FontSize="14"
-                     Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Border>
-        <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                HorizontalAlignment="Right" Cursor="Hand" ToolTip="System stats">
-          <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                     Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Border>
-      </Grid>
+
       </Grid>
       </Grid>
     </Border>
@@ -1241,7 +1242,7 @@ function Sync-Size {
     if ($script:hover) {
         # expanded: one fixed size (grown only if something doesn't fit), so the buttons stay put
         $w = [math]::Max($w, [math]::Ceiling((Clamp $script:cfg.expandedWidth 208 800)))
-        $h = [math]::Max($h, [math]::Max((Get-FixedHeight), [math]::Ceiling((Clamp $script:cfg.expandedHeight 0 800))))
+        $h = [math]::Max($h, [math]::Ceiling((Clamp $script:cfg.expandedHeight 0 800)))   # height fits the open panel
     }
     # (content stretches with the host, so text and companion move with the pill's edges)
     $key = "$w,$h"

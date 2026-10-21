@@ -119,7 +119,7 @@ Options added by future updates are filled in automatically.
 | `peekOpacity` | `0.25` | With click-through on, the pill fades to this while the cursor is over it (1 = no fade) |
 | `fullscreenNotch` | `true` | While a fullscreen app is in front, show a slim notch at the top edge instead of the pill |
 | `expandedWidth` | `400` | Width of the expanded island. It keeps one size so the buttons are always in the same place |
-| `expandedHeight` | `0` | Height of the expanded island. `0` = just tall enough for its tallest panel, so it never resizes when you switch panels |
+| `expandedHeight` | `0` | Height of the expanded island. `0` = fits the open panel with no empty space; the buttons stay in the same place either way. A number sets a minimum |
 | `expandedOpacity` | `0.92` | How dark the background gets while expanded, so text stays readable |
 | `fullscreenClock` | `true` | In fullscreen, the notch shows the time when nothing else is going on |
 | `popups` | `true` | Short notices in the island (and the fullscreen notch). Turn single kinds off below or in the tray menu → Popups |
@@ -150,7 +150,7 @@ Options added by future updates are filled in automatically.
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
 
 **Expanded island**: hover it (Ctrl+click first when click-through is on) to expand it. The round
-buttons at the bottom stay in the same place: the left one opens music and volume controls, the middle one the weather (now and the next hours) (click or drag the bar, scroll to adjust, the
+buttons under the top row stay in the same place: the left one opens music and volume controls, the middle one the weather (now and the next hours) (click or drag the bar, scroll to adjust, the
 speaker mutes); the one on the right opens system stats. Click a button again to close its panel.
 
 **System stats**: CPU and GPU load, RAM use and network speed work out of the box.
