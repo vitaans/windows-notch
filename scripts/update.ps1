@@ -1,3 +1,4 @@
+# Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
 # Updates this folder to a release from GitHub. The island starts it from "Install update";
 # it runs on its own, so the island's files can be replaced while it is running.
 # Kept as they are: settings.json, state\ and your custom images (only new companion folders

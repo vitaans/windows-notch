@@ -1,3 +1,4 @@
+# Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
 # Draws Charlie, the example companion, from text grids: each character is one pixel (see $palette),
 # scaled up to 128x128 PNGs with hard edges. Copy this to make your own pixel companion.
 #   powershell -ExecutionPolicy Bypass -File docs\examples\draw-charlie.ps1

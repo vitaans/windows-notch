@@ -1,3 +1,4 @@
+# Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
 # Publishes a new version: sets VERSION, commits, tags, pushes and creates the GitHub Release
 # with a zip of the files. Everyone's island then offers the update within a day.
 #   publish 1.1.0

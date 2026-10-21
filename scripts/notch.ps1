@@ -1,3 +1,4 @@
+# Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
 # Send a notice to the island from anywhere: a script, a build, a terminal.
 #   notch "Deploy finished"                      a plain notice
 #   notch "Tests failed" -Kind fail -Text "3 of 120"

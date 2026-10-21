@@ -40,7 +40,7 @@ The repo has to be public for other people's islands to see releases.
 
 | Path | What it is |
 | --- | --- |
-| `settings.json` | Your settings, edit any time (applied live) |
+| `settings.json` | Your settings, created on first run; edit any time (applied live) |
 | `custom images\` | One folder per companion, e.g. `custom images\Charlie\` |
 | `scripts\` | The island, the Claude Code hook, install and uninstall |
 | `data\agent-prices.json` | Model prices for the API-value estimate |
@@ -169,10 +169,15 @@ the island; this folder stays, so delete it if you want everything gone.
 
 ## Credits
 
-Inspired by [Vorssaint](https://github.com/vorssaint/vorssaint-utils) by Vorssaint.
-The price table, blob palette and animation timings are adapted from it. This
-project isn't affiliated with or endorsed by Vorssaint.
-
+- **[Vorssaint](https://github.com/vorssaint/vorssaint-utils)**, copyright 2026 Vorssaint, GPL-3.0-or-later.
+  This project was inspired by it; the price table (`data/agent-prices.json`), the blob palette and the
+  animation timings are adapted from it. This project isn't affiliated with or endorsed by Vorssaint.
+- **Weather data by [Open-Meteo.com](https://open-meteo.com/)** (CC BY 4.0), only when you set `weatherCity`.
+- **Used if you have them, not included:** [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
+  (MPL-2.0) for CPU temperatures, NVIDIA's `nvidia-smi` for GPU temperature, and the
+  [GitHub CLI](https://cli.github.com) (MIT) for pull request notices and publishing.
+- Fonts (Segoe UI, Segoe Fluent Icons, Cascadia Mono) and sounds are the ones built into Windows; none are included.
+- Charlie was drawn for this project by `docs/examples/draw-charlie.ps1`.
 ## License
 
 [GPL 3.0 or later](LICENSE), the same license as Vorssaint.

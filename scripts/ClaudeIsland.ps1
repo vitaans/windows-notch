@@ -1,3 +1,4 @@
+# Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
 # Claude Island - a Dynamic-Island-style pill for Windows.
 # Lives in <island folder>\scripts. Settings: <island folder>\settings.json (applied live).
 # Companions: <island folder>\custom images\<name>\ (see docs\companions.md).
@@ -106,7 +107,7 @@ $script:cfg = [ordered]@{
     updateRepo         = 'kilicaslanalper/windows-notch'   # where releases come from
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
-    mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
+    mascot             = 'Charlie'  # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
     # --- colors
     accent             = '#D97857'  # working (Claude coral)
     doneColor          = '#34C759'
@@ -2054,7 +2055,7 @@ function Fill-StatsPanel {
         $script:statGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition))
         $script:wxText = New-Object System.Windows.Controls.TextBlock
         $script:wxText.Foreground = New-Brush '#CCFFFFFF'; $script:wxText.FontSize = 12; $script:wxText.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
-        $script:wxText.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'
+        $script:wxText.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'; $script:wxText.ToolTip = 'Weather data by Open-Meteo.com (CC BY 4.0)'
         [System.Windows.Controls.Grid]::SetRow($script:wxText, 2); [System.Windows.Controls.Grid]::SetColumnSpan($script:wxText, 2)
         [void]$script:statGrid.Children.Add($script:wxText)
     }

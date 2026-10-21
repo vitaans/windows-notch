@@ -1,3 +1,4 @@
+# Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
 # Claude Island uninstaller: removes the Claude Code hooks and the startup shortcut,
 # and stops the island. Your folder (custom images, settings.json) is left alone -
 # delete it yourself if you want everything gone.

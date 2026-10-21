@@ -3,3 +3,6 @@ state/
 
 # companion art of unknown origin, kept on this PC only
 custom images/Pixel Cat/
+
+# your settings, created with the defaults on first run
+settings.json

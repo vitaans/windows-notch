@@ -1,3 +1,4 @@
+# Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
 # Claude Island setup - run once (Install.cmd). Everything runs from this folder;
 # after this, updating is just replacing files here: the island restarts itself.
 # - points Claude Code's hooks at scripts\island-hook.ps1 (backup of settings.json kept)
