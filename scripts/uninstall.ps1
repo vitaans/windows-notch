@@ -1,5 +1,5 @@
 # Claude Island uninstaller: removes the Claude Code hooks and the startup shortcut,
-# and stops the island. Your folder (companions, config.json) is left alone -
+# and stops the island. Your folder (custom images, settings.json) is left alone -
 # delete it yourself if you want everything gone.
 $ErrorActionPreference = 'Continue'
 
@@ -29,4 +29,4 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
 Remove-Item (Join-Path ([Environment]::GetFolderPath('Startup')) 'Claude Island.lnk') -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $env:LOCALAPPDATA 'ClaudeIsland') -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path (Split-Path $PSScriptRoot -Parent) 'state') -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host 'Claude Island stopped and removed. This folder is still here with your companions and settings.' -ForegroundColor Green
+Write-Host 'Claude Island stopped and removed. This folder is still here with your custom images and settings.' -ForegroundColor Green

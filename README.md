@@ -9,7 +9,11 @@ A Dynamic-Island-style pill at the top-center of your screen for Windows 10/11.
 Hover for a progress bar and previous / play-pause / next.
 
 **Companion**: a little character beside the pill that reacts to all of it. Pick the
-built-in blob or any folder in `companions` (make your own, see the README there).
+built-in blob, Charlie, or any folder in `custom images`. Make your own with the
+[companion guide](docs/companions.md).
+
+**Fullscreen**: while a fullscreen app is in front, the pill becomes a slim notch at
+the top edge with Claude's status and elapsed time.
 
 It draws its own window, so Do Not Disturb doesn't hide it and nothing piles up in
 the notification center. It never steals focus and stays out of Alt+Tab.
@@ -30,14 +34,15 @@ new file has no errors), a new hook script is used on Claude's next step, and
 | Path | What it is |
 | --- | --- |
 | `settings.json` | Your settings, edit any time (applied live) |
-| `companions\` | One folder per companion |
+| `custom images\` | One folder per companion, e.g. `custom images\Charlie\` |
 | `scripts\` | The island, the Claude Code hook, install and uninstall |
 | `data\agent-prices.json` | Model prices for the API-value estimate |
 | `state\` | Running state and `island.log` (safe to delete) |
 
 ## Tray menu
 
-Play a test run, Sound, Show while Claude works, Now playing, Companion,
+Play a test run, Sound, Show while Claude works, Now playing, Click through,
+Compact notch in fullscreen, Companion,
 Start with Windows, Clear stuck sessions, Open island folder, Restart, Quit.
 
 ## settings.json
@@ -89,7 +94,10 @@ Options added by future updates are filled in automatically.
 | `showWorking` | `true` | Show the pill while Claude works |
 | `music` | `true` | Show what's playing when Claude is idle |
 | `musicPausedSeconds` | `4` | Keep the music pill this long after pausing |
-| `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a companion folder name |
+| `clickThrough` | `true` | Clicks go through the pill to whatever is under it. Hold Ctrl to hover or click the pill |
+| `peekOpacity` | `0.25` | With click-through on, the pill fades to this while the cursor is over it (1 = no fade) |
+| `fullscreenNotch` | `true` | While a fullscreen app is in front, show a slim notch at the top edge instead of the pill |
+| `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |
 
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
 
@@ -103,5 +111,10 @@ the island; this folder stays, so delete it if you want everything gone.
 
 ## Credits
 
-Price table, blob palette and animation timings adapted from
-[Vorssaint](https://github.com/vorssaint/vorssaint-utils) (GPL-3.0). Personal use.
+Inspired by [Vorssaint](https://github.com/vorssaint/vorssaint-utils) by Vorssaint.
+The price table, blob palette and animation timings are adapted from it. This
+project isn't affiliated with or endorsed by Vorssaint.
+
+## License
+
+[GPL 3.0 or later](LICENSE), the same license as Vorssaint.

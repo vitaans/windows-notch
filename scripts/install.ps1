@@ -8,7 +8,7 @@
 $ErrorActionPreference = 'Stop'
 $scripts = $PSScriptRoot
 $root    = Split-Path $scripts -Parent
-New-Item -ItemType Directory -Force -Path (Join-Path $root 'state\sessions'), (Join-Path $root 'companions') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $root 'state\sessions'), (Join-Path $root 'custom images') | Out-Null
 Get-ChildItem $scripts -Filter *.ps1 | Unblock-File -ErrorAction SilentlyContinue
 
 $lnkPath  = Join-Path ([Environment]::GetFolderPath('Startup')) 'Claude Island.lnk'

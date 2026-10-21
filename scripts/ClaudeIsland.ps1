@@ -1,12 +1,12 @@
 # Claude Island - a Dynamic-Island-style pill for Windows.
 # Lives in <island folder>\scripts. Settings: <island folder>\settings.json (applied live).
-# Companions: <island folder>\companions\<name>\ (see the README there).
+# Companions: <island folder>\custom images\<name>\ (see docs\companions.md).
 # Replacing this file (or the hook) is all an update needs: the island restarts itself.
 #  * Claude Code status: working / needs your input / task complete (model, tokens, API value)
 #  * Now playing: album art, title, artist, equalizer; hover for progress and controls
 #  * A little mascot that blinks, glances around and hops when a task finishes
-# Ideas, price table, mascot palette and pulse timing adapted from Vorssaint (GPL-3.0),
-# https://github.com/vorssaint/vorssaint-utils - for personal use.
+# Inspired by Vorssaint (https://github.com/vorssaint/vorssaint-utils): ideas, price table,
+# mascot palette and pulse timing are adapted from it. GPL-3.0-or-later, see LICENSE.
 #
 # Draws its own window instead of using Windows notifications, so Focus / Do Not
 # Disturb doesn't hide it and nothing lands in the notification center.
@@ -18,7 +18,16 @@ $script:SelfPath = $PSCommandPath
 $Root     = Split-Path $PSScriptRoot -Parent
 $StateDir = Join-Path $Root 'state'
 $SessDir  = Join-Path $StateDir 'sessions'
-$CompDir  = Join-Path $Root 'companions'
+$CompDir  = Join-Path $Root 'custom images'
+# Companions used to live in companions\: move any left there over (an existing one wins)
+$oldComp  = Join-Path $Root 'companions'
+if (Test-Path -LiteralPath $oldComp) {
+    New-Item -ItemType Directory -Force -Path $CompDir | Out-Null
+    foreach ($d in @(Get-ChildItem -LiteralPath $oldComp -Directory)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $CompDir $d.Name))) { try { Move-Item -LiteralPath $d.FullName $CompDir } catch { } }
+    }
+    if (-not @(Get-ChildItem -LiteralPath $oldComp -Recurse -File).Count) { Remove-Item -LiteralPath $oldComp -Recurse -Force -ErrorAction SilentlyContinue }
+}
 $CfgPath  = Join-Path $Root 'settings.json'
 $oldCfg   = Join-Path $Root 'config.json'
 if ((Test-Path $oldCfg) -and -not (Test-Path $CfgPath)) { try { Move-Item $oldCfg $CfgPath } catch { } }
@@ -69,7 +78,7 @@ $script:cfg = [ordered]@{
     clickThrough       = $true      # clicks go through the pill to what's under it; hold Ctrl to hover/click the pill
     peekOpacity        = 0.25       # with click-through on, the pill fades to this while the cursor is over it (1 = no fade)
     fullscreenNotch    = $true      # while a fullscreen app is in front, swap the pill for a slim notch at the top edge
-    mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a companions folder name
+    mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
     # --- colors
     accent             = '#D97857'  # working (Claude coral)
     doneColor          = '#34C759'
@@ -602,7 +611,7 @@ function Hide-Notch {
 # ---- mascot -------------------------------------------------------------
 $script:mood = 'normal'
 # ---- companions -----------------------------------------------------------
-# Built-in: the blob (any palette color). Custom: companions\<Name>\ with images per state:
+# Built-in: the blob (any palette color). Custom: custom images\<Name>\ with images per state:
 #   idle.png  working.png  needs.png  done.png  music.png   (only idle.png is required)
 #   animate a state with numbered frames: idle_1.png, idle_2.png, ...
 #   optional companion.json: { "size": 26, "fps": 6, "pixelated": true, "breathe": true }
@@ -1580,7 +1589,7 @@ $miMascot.Add_DropDownOpening({
         [void]$miMascot.DropDownItems.Add($it)
     }
     [void]$miMascot.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    $open = New-Object System.Windows.Forms.ToolStripMenuItem 'Open companions folder'
+    $open = New-Object System.Windows.Forms.ToolStripMenuItem 'Open custom images folder'
     $open.Add_Click({ Start-Process explorer.exe "`"$CompDir`"" })
     [void]$miMascot.DropDownItems.Add($open)
 })
