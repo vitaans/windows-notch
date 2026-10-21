@@ -1048,7 +1048,8 @@ function Get-FixedHeight {
     $was = @($els | ForEach-Object { $_.Visibility })
     $inf = New-Object System.Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)
     $uiDetails.Visibility = 'Collapsed'; $uiStatsPanel.Visibility = 'Collapsed'
-    foreach ($e in $uiMusicDetails, $uiMPanelInfo, $uiProgGrid, $uiTimeGrid) { $e.Visibility = 'Visible' }
+    foreach ($e in $uiMusicDetails, $uiProgGrid, $uiTimeGrid) { $e.Visibility = 'Visible' }
+    $uiMPanelInfo.Visibility = if ($script:viewKind -eq 'music') { 'Collapsed' } else { 'Visible' }
     $uiInner.Measure($inf); $h1 = $uiInner.DesiredSize.Height
     $uiMusicDetails.Visibility = 'Collapsed'; $uiStatsPanel.Visibility = 'Visible'
     $uiInner.Measure($inf); $h2 = $uiInner.DesiredSize.Height
@@ -1539,63 +1540,61 @@ $uiBtnMute.Add_MouseLeftButtonUp({
     Update-Volume
 })
 
+# Compact 2 x 2 grid (CPU, GPU / RAM, NET), so the stats panel is no taller than the music one
 $script:statLines = $null
-function New-StatLine($label) {
-    $g = New-Object System.Windows.Controls.Grid
-    $g.Margin = New-Object System.Windows.Thickness(0, 0, 0, 7)
-    foreach ($w in 46, -1, 120) {
-        $c = New-Object System.Windows.Controls.ColumnDefinition
-        $c.Width = if ($w -lt 0) { New-Object System.Windows.GridLength(1, 'Star') } else { New-Object System.Windows.GridLength($w) }
-        $g.ColumnDefinitions.Add($c)
-    }
+function New-StatCell($label, $col, $row) {
+    $cell = New-Object System.Windows.Controls.StackPanel
+    $cell.Margin = New-Object System.Windows.Thickness($(if ($col) { 10 } else { 0 }), 0, $(if ($col) { 0 } else { 10 }), 8)
+    [System.Windows.Controls.Grid]::SetColumn($cell, $col); [System.Windows.Controls.Grid]::SetRow($cell, $row)
+    $top = New-Object System.Windows.Controls.DockPanel
     $l = New-Object System.Windows.Controls.TextBlock
     $l.Text = $label; $l.Foreground = New-Brush '#80FFFFFF'; $l.FontSize = 11; $l.FontWeight = 'SemiBold'; $l.VerticalAlignment = 'Center'
     $l.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'
+    $v = New-Object System.Windows.Controls.TextBlock
+    $v.Foreground = New-Brush '#FFFFFFFF'; $v.FontSize = 12; $v.VerticalAlignment = 'Center'; $v.TextAlignment = 'Right'
+    $v.FontFamily = New-Object System.Windows.Media.FontFamily 'Cascadia Mono, Consolas'
+    [void]$top.Children.Add($l); [void]$top.Children.Add($v)
+    [System.Windows.Controls.DockPanel]::SetDock($l, 'Left')
     $bar = New-Object System.Windows.Controls.Grid
-    $bar.Height = 4; $bar.VerticalAlignment = 'Center'; $bar.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
-    [System.Windows.Controls.Grid]::SetColumn($bar, 1)
+    $bar.Height = 4; $bar.Margin = New-Object System.Windows.Thickness(0, 5, 0, 0)
     $track = New-Object System.Windows.Controls.Border; $track.Background = New-Brush '#26FFFFFF'; $track.CornerRadius = 2
     $fill = New-Object System.Windows.Controls.Border; $fill.Background = New-Brush '#E6FFFFFF'; $fill.CornerRadius = 2
     $fill.RenderTransformOrigin = New-Object System.Windows.Point(0, 0.5)
     $fill.RenderTransform = New-Object System.Windows.Media.ScaleTransform(0, 1)
     [void]$bar.Children.Add($track); [void]$bar.Children.Add($fill)
-    $v = New-Object System.Windows.Controls.TextBlock
-    $v.Foreground = New-Brush '#FFFFFFFF'; $v.FontSize = 12; $v.VerticalAlignment = 'Center'; $v.TextAlignment = 'Right'
-    $v.FontFamily = New-Object System.Windows.Media.FontFamily 'Cascadia Mono, Consolas'
-    [System.Windows.Controls.Grid]::SetColumn($v, 2)
-    foreach ($x in $l, $bar, $v) { [void]$g.Children.Add($x) }
-    [void]$uiStatLines.Children.Add($g)
-    @{ bar = $bar; fill = $fill; value = $v }
+    [void]$cell.Children.Add($top); [void]$cell.Children.Add($bar)
+    [void]$script:statGrid.Children.Add($cell)
+    @{ cell = $cell; bar = $bar; fill = $fill; value = $v }
 }
 function Set-StatLine($line, $frac, [string]$text) {
-    if ($null -eq $frac) { $line.bar.Visibility = 'Hidden' }
+    if ($null -eq $frac) { $line.bar.Visibility = 'Hidden' }      # keeps its height, so rows stay aligned
     else { $line.bar.Visibility = 'Visible'; $line.fill.RenderTransform.ScaleX = Clamp $frac 0 1 }
     $line.value.Text = $text
 }
 function Fill-StatsPanel {
     if (-not $script:statLines) {
-        $script:statLines = [ordered]@{
-            cpu = New-StatLine 'CPU'; gpu = New-StatLine 'GPU'; ram = New-StatLine 'RAM'
-            down = New-StatLine 'DOWN'; up = New-StatLine 'UP'
+        $script:statGrid = New-Object System.Windows.Controls.Grid
+        foreach ($i in 0, 1) {
+            $script:statGrid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition))
+            $script:statGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition))
         }
-        $script:statNote = New-Object System.Windows.Controls.TextBlock
-        $script:statNote.Text = 'CPU temperature needs LibreHardwareMonitor running'
-        $script:statNote.Foreground = New-Brush '#66FFFFFF'; $script:statNote.FontSize = 10.5; $script:statNote.Margin = New-Object System.Windows.Thickness(0, 1, 0, 2)
-        [void]$uiStatLines.Children.Add($script:statNote)
+        [void]$uiStatLines.Children.Add($script:statGrid)
+        $script:statLines = [ordered]@{
+            cpu = New-StatCell 'CPU' 0 0; gpu = New-StatCell 'GPU' 1 0
+            ram = New-StatCell 'RAM' 0 1; net = New-StatCell 'NET' 1 1
+        }
     }
-    $st = $script:stats; $L = $script:statLines; $deg = [string][char]0x00B0 + 'C'
-    $t = if ($null -ne $st.cpu) { "$($st.cpu)%" } else { '--' }; if ($null -ne $st.cpuTemp) { $t += "  $($st.cpuTemp)$deg" }
+    $st = $script:stats; $L = $script:statLines; $deg = [string][char]0x00B0
+    $t = if ($null -ne $st.cpu) { "$($st.cpu)%" } else { '--' }; if ($null -ne $st.cpuTemp) { $t += " $($st.cpuTemp)$deg" }
     Set-StatLine $L.cpu $(if ($null -ne $st.cpu) { $st.cpu / 100 }) $t
-    $t = if ($null -ne $st.gpu) { "$($st.gpu)%" } else { '--' }; if ($null -ne $st.gpuTemp) { $t += "  $($st.gpuTemp)$deg" }
+    $L.cpu.cell.ToolTip = if ($null -eq $st.cpuTemp) { 'CPU temperature needs LibreHardwareMonitor running' } else { $null }
+    $t = if ($null -ne $st.gpu) { "$($st.gpu)%" } else { '--' }; if ($null -ne $st.gpuTemp) { $t += " $($st.gpuTemp)$deg" }
     Set-StatLine $L.gpu $(if ($null -ne $st.gpu) { $st.gpu / 100 }) $t
     $gb = $st.ramGB
-    $t = if ($gb) { '{0} / {1} GB' -f $gb[0].ToString('0.0', $INV), $gb[1].ToString('0', $INV) } else { '--' }
+    $t = if ($gb) { '{0}/{1} GB' -f $gb[0].ToString('0.0', $INV), $gb[1].ToString('0', $INV) } else { '--' }
     Set-StatLine $L.ram $(if ($null -ne $st.ram -and $st.ram -ge 0) { $st.ram / 100 }) $t
-    Set-StatLine $L.down $null ((Format-Rate $st.down) + 'B/s')
-    Set-StatLine $L.up $null ((Format-Rate $st.up) + 'B/s')
-    $script:statNote.Visibility = if ($null -eq $st.cpuTemp) { 'Visible' } else { 'Collapsed' }
+    Set-StatLine $L.net $null ([string][char]0x2193 + (Format-Rate $st.down) + ' ' + [char]0x2191 + (Format-Rate $st.up))
 }
-
 # ---- system stats ---------------------------------------------------------
 # Collected on a background runspace every 2 s, so slow sources (performance counters,
 # WMI) never stall the animations. CPU and RAM come from Windows directly, GPU load from
