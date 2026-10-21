@@ -78,6 +78,8 @@ $script:cfg = [ordered]@{
     clickThrough       = $true      # clicks go through the pill to what's under it; hold Ctrl to hover/click the pill
     peekOpacity        = 0.25       # with click-through on, the pill fades to this while the cursor is over it (1 = no fade)
     fullscreenNotch    = $true      # while a fullscreen app is in front, swap the pill for a slim notch at the top edge
+    stats              = $true      # when nothing else is on, show system stats in the pill
+    statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
     mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
     # --- colors
     accent             = '#D97857'  # working (Claude coral)
@@ -178,6 +180,14 @@ public static class IslandNative {
         }
     }
 
+    // System stats: total CPU time counters and memory load
+    [DllImport("kernel32.dll")] public static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
+    [StructLayout(LayoutKind.Sequential)] public class MEMSTAT {
+        public uint dwLength = 64; public uint dwMemoryLoad; public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile,
+        ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual; }
+    [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx([In, Out] MEMSTAT m);
+    public static int MemoryLoad() { var m = new MEMSTAT(); return GlobalMemoryStatusEx(m) ? (int)m.dwMemoryLoad : -1; }
+
     // Fullscreen: the foreground window covers its whole monitor (and isn't the desktop or just
     // a maximized window with a title bar). Returns that monitor's rect in pixels, or null.
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
@@ -253,6 +263,7 @@ try {
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
   <Grid x:Name="RootGrid" Margin="36,12,36,36">
     <Grid.LayoutTransform><ScaleTransform x:Name="RootScale" ScaleX="1" ScaleY="1"/></Grid.LayoutTransform>
+    <Grid x:Name="PeekHost">
     <Border x:Name="Pill" Background="Transparent" CornerRadius="24" BorderBrush="#26FFFFFF"
             HorizontalAlignment="Center" VerticalAlignment="Top"
             BorderThickness="1" Padding="0" Opacity="0"
@@ -326,6 +337,9 @@ try {
               </Border>
             </StackPanel>
 
+            <!-- System stats row (filled in by Render-Stats) -->
+            <StackPanel x:Name="StatsRow" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,5,0,5" Visibility="Collapsed"/>
+
             <!-- Now playing row -->
             <StackPanel x:Name="MusicRow" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
               <Border x:Name="Art" Width="30" Height="30" CornerRadius="8" Background="#2C2C30" VerticalAlignment="Center">
@@ -384,6 +398,13 @@ try {
       </Grid>
       </Grid>
     </Border>
+    </Grid>
+    <!-- Click-through hint, shown under the pill after hovering it for a while -->
+    <Border x:Name="Hint" HorizontalAlignment="Center" VerticalAlignment="Top" Background="#E60B0B0D"
+            CornerRadius="9" Padding="10,4,10,5" Opacity="0" IsHitTestVisible="False">
+      <TextBlock Text="Hold Ctrl to use the island" Foreground="#E6FFFFFF"
+                 FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="11.5"/>
+    </Border>
   </Grid>
 </Window>
 "@
@@ -393,7 +414,7 @@ $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $x
 foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText','TimerText','Badge','BadgeText',
                'Details','Rows','ClaudeRow','MusicRow','Art','ArtNote','MTitle','MArtist','Eq','MusicDetails',
                'ProgGrid','ProgTrack','ProgFill','TimeGrid','PosText','DurText','BtnPrev','BtnPlay','BtnNext','PlayGlyph',
-               'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost') {
+               'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -832,6 +853,10 @@ function Set-Look($mode) {
         'musicpaused' {
             $glow.Color = New-Color $script:artColor; $glow.Opacity = 0.25 * $script:glowK
             foreach ($r in $uiEq.Children) { $r.Fill = New-Brush $script:artColor }
+            Mascot-Mood 'normal'
+        }
+        'stats' {
+            $glow.Color = New-Color '#8E8E93'; $glow.Opacity = 0.2 * $script:glowK
             Mascot-Mood 'normal'
         }
     }
@@ -1295,7 +1320,7 @@ foreach ($pair in @(@($uiBtnPrev, 'prev'), @($uiBtnPlay, 'toggle'), @($uiBtnNext
 }
 
 function Show-Music($m, $now) {
-    $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Visible'; $uiDetails.Visibility = 'Collapsed'; $uiDetails.Tag = ''
+    $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Visible'; $uiStatsRow.Visibility = 'Collapsed'; $uiDetails.Visibility = 'Collapsed'; $uiDetails.Tag = ''
     Set-Look $(if ($m.playing) { 'music' } else { 'musicpaused' })
     Set-Text $uiMTitle ([string]$m.title)
     Set-Text $uiMArtist ([string]$(if ($m.artist) { $m.artist } else { $m.appName }))
@@ -1325,6 +1350,135 @@ function Show-Music($m, $now) {
     Show-Pill
 }
 
+# ---- system stats ---------------------------------------------------------
+# Collected on a background runspace every 2 s, so slow sources (performance counters,
+# WMI) never stall the animations. CPU and RAM come from Windows directly, GPU load from
+# the "GPU Engine" counters (Task Manager's GPU column). Temperatures need
+# LibreHardwareMonitor (or OpenHardwareMonitor) running; NVIDIA GPU temps also come from
+# nvidia-smi when it's installed. Anything unavailable is simply left out.
+$script:stats = [hashtable]::Synchronized(@{ on = $true; want = [bool]$script:cfg.stats })
+$statsPs = [PowerShell]::Create()
+[void]$statsPs.AddScript({
+    param($st)
+    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null
+    $smi = $null; try { $smi = (Get-Command nvidia-smi.exe -ErrorAction Stop).Source } catch { }
+    while ($st.on) {
+        if (-not $st.want) { Start-Sleep -Milliseconds 500; continue }
+        try {
+            $i = 0L; $k = 0L; $u = 0L
+            if ([IslandNative]::GetSystemTimes([ref]$i, [ref]$k, [ref]$u)) {
+                if ($prev) {
+                    $tot = ($k - $prev[1]) + ($u - $prev[2])   # kernel time includes idle
+                    if ($tot -gt 0) { $st.cpu = [int][math]::Max(0, [math]::Round(100 * (1 - ($i - $prev[0]) / $tot))) }
+                }
+                $prev = @($i, $k, $u)
+            }
+            $st.ram = [IslandNative]::MemoryLoad()
+        } catch { }
+        try {
+            $rx = 0L; $tx = 0L
+            foreach ($n in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+                if ($n.OperationalStatus -ne 'Up' -or @('Loopback', 'Tunnel') -contains [string]$n.NetworkInterfaceType) { continue }
+                $s = $n.GetIPStatistics(); $rx += $s.BytesReceived; $tx += $s.BytesSent
+            }
+            $t = [Environment]::TickCount
+            if ($netPrev) {
+                $dt = ($t - $netPrev[2]) / 1000.0
+                if ($dt -gt 0) { $st.down = [math]::Max(0, ($rx - $netPrev[0]) / $dt); $st.up = [math]::Max(0, ($tx - $netPrev[1]) / $dt) }
+            }
+            $netPrev = @($rx, $tx, $t)
+        } catch { }
+        try {
+            $cat = New-Object System.Diagnostics.PerformanceCounterCategory 'GPU Engine'
+            $sum = 0.0; $seen = @{}
+            foreach ($n in $cat.GetInstanceNames()) {
+                if ($n -notlike '*engtype_3D') { continue }
+                $seen[$n] = 1
+                if ($gpu.ContainsKey($n)) { $sum += $gpu[$n].NextValue() }
+                else { $gpu[$n] = New-Object System.Diagnostics.PerformanceCounter('GPU Engine', 'Utilization Percentage', $n, $true); [void]$gpu[$n].NextValue() }
+            }
+            foreach ($n in @($gpu.Keys)) { if (-not $seen.ContainsKey($n)) { $gpu[$n].Dispose(); $gpu.Remove($n) } }
+            $st.gpu = [int][math]::Min(100, [math]::Round($sum))
+        } catch { $st.gpu = $null }
+        $lhmGpu = $null
+        if ($lhmNs -or $tick % 15 -eq 0) {
+            $sens = $null; $lhmNs = $null
+            foreach ($ns in 'root/LibreHardwareMonitor', 'root/OpenHardwareMonitor') {
+                try { $sens = @(Get-CimInstance -Namespace $ns -ClassName Sensor -Filter "SensorType='Temperature'" -ErrorAction Stop); $lhmNs = $ns; break } catch { }
+            }
+            $cpuT = $null
+            if ($lhmNs) {
+                $c = @($sens | Where-Object { $_.Identifier -match '/(amd|intel)cpu/' })
+                $p = @($c | Where-Object { $_.Name -match '^(CPU Package|Core \(Tctl)' })
+                $pick = if ($p.Count) { $p } else { $c }
+                if ($pick.Count) { $cpuT = [int][math]::Round(($pick | ForEach-Object { [double]$_.Value } | Measure-Object -Maximum).Maximum) }
+                $g = @($sens | Where-Object { $_.Identifier -match '/gpu' })
+                $gc = @($g | Where-Object { $_.Name -eq 'GPU Core' })
+                $pick = if ($gc.Count) { $gc } else { $g }
+                if ($pick.Count) { $lhmGpu = [int][math]::Round(($pick | ForEach-Object { [double]$_.Value } | Measure-Object -Maximum).Maximum) }
+            }
+            $st.cpuTemp = $cpuT
+        }
+        if ($null -ne $lhmGpu) { $st.gpuTemp = $lhmGpu }
+        elseif ($smi -and $tick % 3 -eq 0) {
+            try {
+                $o = & $smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>$null | Select-Object -First 1
+                $st.gpuTemp = if ("$o" -match '^\s*(\d+)') { [int]$Matches[1] } else { $null }
+            } catch { $st.gpuTemp = $null }
+        } elseif (-not $smi) { $st.gpuTemp = $null }
+        $tick++
+        Start-Sleep -Seconds 2
+    }
+}).AddArgument($script:stats)
+$script:statsJob = $statsPs.BeginInvoke()
+
+$script:statKeys = ''; $script:statVals = @{}
+function Format-Rate($b) {
+    $b = [double]$b
+    if ($b -ge 1MB) { $v = $b / 1MB; return $(if ($v -lt 10) { $v.ToString('0.0', $INV) } else { [math]::Round($v).ToString($INV) }) + 'M' }
+    ([math]::Round($b / 1KB)).ToString($INV) + 'K'
+}
+function Stat-Value($key) {
+    $st = $script:stats
+    switch ($key) {
+        'cpu' { $v = if ($null -ne $st.cpu) { '{0,3}%' -f $st.cpu } else { ' --' }; if ($null -ne $st.cpuTemp) { $v += (' {0,3}' -f $st.cpuTemp) + [char]0x00B0 }; $v }
+        'gpu' { $v = if ($null -ne $st.gpu) { '{0,3}%' -f $st.gpu } else { ' --' }; if ($null -ne $st.gpuTemp) { $v += (' {0,3}' -f $st.gpuTemp) + [char]0x00B0 }; $v }
+        'ram' { if ($null -ne $st.ram -and $st.ram -ge 0) { '{0,3}%' -f $st.ram } else { ' --' } }
+        'net' { [string][char]0x2193 + (Format-Rate $st.down).PadLeft(5) + ' ' + [char]0x2191 + (Format-Rate $st.up).PadLeft(5) }
+    }
+}
+function Render-Stats {
+    $keys = @(([string]$script:cfg.statsItems).ToLower() -split '[,\s]+' | Where-Object { @('cpu', 'gpu', 'ram', 'net') -contains $_ })
+    $sig = $keys -join ','
+    if ($sig -ne $script:statKeys) {
+        $script:statKeys = $sig; $uiStatsRow.Children.Clear(); $script:statVals = @{}
+        foreach ($k in $keys) {
+            $l = New-Object System.Windows.Controls.TextBlock
+            $l.Text = $k.ToUpper(); $l.Foreground = New-Brush '#80FFFFFF'; $l.FontSize = 11; $l.FontWeight = 'SemiBold'
+            $l.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'
+            $l.VerticalAlignment = 'Center'
+            $l.Margin = New-Object System.Windows.Thickness($(if ($uiStatsRow.Children.Count) { 14 } else { 0 }), 0, 5, 0)
+            $v = New-Object System.Windows.Controls.TextBlock
+            $v.Foreground = New-Brush '#FFFFFFFF'; $v.FontSize = 12; $v.VerticalAlignment = 'Center'
+            $v.FontFamily = New-Object System.Windows.Media.FontFamily 'Cascadia Mono, Consolas'
+            [void]$uiStatsRow.Children.Add($l); [void]$uiStatsRow.Children.Add($v)
+            $script:statVals[$k] = $v
+        }
+    }
+    foreach ($k in $keys) { $script:statVals[$k].Text = Stat-Value $k }
+}
+function Show-Stats {
+    $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Visible'
+    $uiDetails.Visibility = 'Collapsed'; $uiDetails.Tag = ''; $uiMusicDetails.Visibility = 'Collapsed'; $uiMusicDetails.Tag = ''
+    Set-Look 'stats'
+    Render-Stats
+    $script:dismissKey = ''
+    Set-View 'stats'
+    Sync-Size
+    $script:lastKey = 'stats'
+    Show-Pill
+}
+
 # ---- main loop ------------------------------------------------------------
 $script:dismissed   = @{}
 $script:announced   = @{}
@@ -1335,6 +1489,7 @@ $script:firstTick   = $true
 function Update-Island {
     try {
         $now = Get-Now
+        $script:stats.want = [bool]$script:cfg.stats
         $sessions = New-Object System.Collections.ArrayList
         foreach ($f in [IO.Directory]::GetFiles($SessDir, '*.json')) {
             try { $s = [IO.File]::ReadAllText($f) | ConvertFrom-Json } catch { continue }
@@ -1381,13 +1536,15 @@ function Update-Island {
             $m = $script:music
             if ($m -and ($m.playing -or $script:hover -or ($script:pausedAt -and ($now - $script:pausedAt) -lt ([int]$script:cfg.musicPausedSeconds * 1000)))) {
                 Show-Music $m $now
+            } elseif ($script:cfg.stats) {
+                Show-Stats
             } else {
                 Hide-Pill; $script:lastKey = ''
             }
             return
         }
 
-        $uiClaudeRow.Visibility = 'Visible'; $uiMusicRow.Visibility = 'Collapsed'; $uiMusicDetails.Visibility = 'Collapsed'; $uiMusicDetails.Tag = ''
+        $uiClaudeRow.Visibility = 'Visible'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Collapsed'; $uiMusicDetails.Visibility = 'Collapsed'; $uiMusicDetails.Tag = ''
         Set-Look $mode
         $proj = [string]$pick.project
         switch ($mode) {
@@ -1450,7 +1607,15 @@ function Set-Peek([bool]$on) {
     if ($on -eq $script:peek) { return }
     $script:peek = $on
     $to = if ($on) { Clamp $script:cfg.peekOpacity 0 1 } else { 1 }
-    Animate $uiRootGrid $OpacityProp $to 150
+    Animate $uiPeekHost $OpacityProp $to 150
+}
+# After hovering the see-through pill for a few seconds, a hint says how to use it
+$script:hintMs = 0; $script:hintOn = $false
+function Set-Hint([bool]$on) {
+    if ($on -eq $script:hintOn) { return }
+    $script:hintOn = $on
+    if ($on) { $uiHint.Margin = New-Object System.Windows.Thickness(0, ($uiPill.ActualHeight + 8), 0, 0) }
+    Animate $uiHint $OpacityProp $(if ($on) { 1 } else { 0 }) $(if ($on) { 200 } else { 150 })
 }
 function Test-CursorOnPill([double]$padDip) {
     $src = [System.Windows.PresentationSource]::FromVisual($win)
@@ -1470,14 +1635,17 @@ $hoverTimer.Add_Tick({
         $ctrl = ([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Control) -ne 0
         $through = [bool]$script:cfg.clickThrough -and -not $ctrl
         Set-PassThru $through
-        if (-not $script:shown -or $uiPill.Opacity -lt 0.9) { Set-Peek $false; $script:hoverIn = 0; $script:hoverOut = 0; return }
+        if (-not $script:shown -or $uiPill.Opacity -lt 0.9) { Set-Peek $false; Set-Hint $false; $script:hintMs = 0; $script:hoverIn = 0; $script:hoverOut = 0; return }
         if ($through) {
-            Set-Peek (Test-CursorOnPill 0)
+            $over = Test-CursorOnPill 0
+            Set-Peek $over
+            if ($over) { $script:hintMs += 50; if ($script:hintMs -ge 3000) { Set-Hint $true } }
+            else { $script:hintMs = 0; Set-Hint $false }
             $script:hoverIn = 0
             if ($script:hover) { $script:hover = $false; $script:hoverOut = 0; Update-Island }
             return
         }
-        Set-Peek $false
+        Set-Peek $false; Set-Hint $false; $script:hintMs = 0
         if ($script:hover) {
             if (Test-CursorOnPill 10) { $script:hoverOut = 0 }
             else {
@@ -1558,6 +1726,7 @@ $miTest.Add_Click({ Start-Test })
 [void]$menu.Items.Add((New-Toggle 'Now playing' 'music'))
 [void]$menu.Items.Add((New-Toggle 'Click through (hold Ctrl to use)' 'clickThrough'))
 [void]$menu.Items.Add((New-Toggle 'Compact notch in fullscreen' 'fullscreenNotch'))
+[void]$menu.Items.Add((New-Toggle 'System stats when idle' 'stats'))
 
 function Set-Companion($name) {
     $script:cfg.mascot = [string]$name; Save-Config; Apply-Companion; Mascot-Hop 'perk'
@@ -1633,6 +1802,7 @@ $miRestart.Add_Click({ Restart-Island })
 $miQuit = New-Object System.Windows.Forms.ToolStripMenuItem 'Quit'
 $miQuit.Add_Click({
     $timer.Stop(); $musicTimer.Stop(); $blinkTimer.Stop(); $watchTimer.Stop(); $compTimer.Stop(); $blurTimer.Stop(); $hoverTimer.Stop()
+    $script:stats.on = $false
     $tray.Visible = $false; $tray.Dispose()
     $app.Shutdown()
 })
@@ -1659,6 +1829,7 @@ function Apply-Settings {
 function Restart-Island {
     try {
         foreach ($t in $timer, $musicTimer, $blinkTimer, $watchTimer, $compTimer, $blurTimer, $hoverTimer) { if ($t) { $t.Stop() } }
+        $script:stats.on = $false
         $tray.Visible = $false; $tray.Dispose()
         try { $script:mutex.ReleaseMutex(); $script:mutex.Dispose() } catch { }
         $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'

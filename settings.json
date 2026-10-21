@@ -31,6 +31,8 @@
     "clickThrough":  true,
     "peekOpacity":  0.25,
     "fullscreenNotch":  true,
+    "stats":  true,
+    "statsItems":  "cpu,gpu,ram,net",
     "mascot":  "Pixel Cat",
     "accent":  "#D97857",
     "doneColor":  "#34C759",

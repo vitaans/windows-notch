@@ -42,7 +42,7 @@ new file has no errors), a new hook script is used on Claude's next step, and
 ## Tray menu
 
 Play a test run, Sound, Show while Claude works, Now playing, Click through,
-Compact notch in fullscreen, Companion,
+Compact notch in fullscreen, System stats when idle, Companion,
 Start with Windows, Clear stuck sessions, Open island folder, Restart, Quit.
 
 ## settings.json
@@ -97,9 +97,17 @@ Options added by future updates are filled in automatically.
 | `clickThrough` | `true` | Clicks go through the pill to whatever is under it. Hold Ctrl to hover or click the pill |
 | `peekOpacity` | `0.25` | With click-through on, the pill fades to this while the cursor is over it (1 = no fade) |
 | `fullscreenNotch` | `true` | While a fullscreen app is in front, show a slim notch at the top edge instead of the pill |
+| `stats` | `true` | When nothing else is on, the pill shows system stats |
+| `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
 | `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |
 
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
+
+**System stats**: CPU and GPU load, RAM use and network speed work out of the box.
+Temperatures need [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
+running as administrator (free, MPL-2.0). The island reads the sensors it publishes to WMI,
+so nothing is bundled here. NVIDIA GPU temperature also works without it,
+through `nvidia-smi` from the NVIDIA driver.
 
 API value is what the session would cost at API prices; on a Pro/Max plan you aren't billed this.
 Only Claude Code sessions are tracked, not regular chats in the Claude app.
