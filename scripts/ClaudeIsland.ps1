@@ -91,6 +91,13 @@ $script:cfg = [ordered]@{
     popupBattery       = $true      # charger plugged in or out, battery low (laptops)
     popupNetwork       = $true      # Wi-Fi / Ethernet connected or lost, VPN on or off
     popupScreenshots   = $true      # a screenshot was saved: a small preview, click it to open
+    popupDownloads     = $true      # a download finished (Downloads folder): click to show it
+    popupClipboard     = $true      # something was copied: a short preview (password managers' copies are skipped)
+    popupFocus         = $true      # Do Not Disturb turned on or off
+    calendarIcsUrl     = ''         # your calendar's private iCal (.ics) link, for "meeting in 5 minutes"
+    calendarMinutes    = 5          # how early to remind you of a meeting
+    timerMinutes       = 25         # Pomodoro: focus length (tray menu > Timer)
+    breakMinutes       = 5          # Pomodoro: break length
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
     mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
@@ -259,6 +266,7 @@ public static class IslandNative {
         public uint dwLength = 64; public uint dwMemoryLoad; public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile,
         ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual; }
     [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx([In, Out] MEMSTAT m);
+    [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
     public static int MemoryLoad() { var m = new MEMSTAT(); return GlobalMemoryStatusEx(m) ? (int)m.dwMemoryLoad : -1; }
     public static double[] MemoryGB() {   // used, total
         var m = new MEMSTAT(); if (!GlobalMemoryStatusEx(m)) return null;
@@ -431,6 +439,8 @@ try {
             <StackPanel x:Name="PopupRow" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
               <Grid Width="28" Height="28" VerticalAlignment="Center">
                 <Ellipse x:Name="PopDot" Width="26" Height="26" Fill="#33FFFFFF"/>
+                <Path x:Name="PopRing" Width="28" Height="28" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Visibility="Collapsed"/>
                 <TextBlock x:Name="PopGlyph" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Foreground="#FFFFFFFF"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Grid>
@@ -575,7 +585,7 @@ foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText'
                'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
                'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
                'StatsPanel','StatLines','Tools','ToolsSpace',
-               'PopupRow','PopDot','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel') {
+               'PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -1589,6 +1599,7 @@ function Show-PopupView($p, $now) {
     $c = New-Color ([string]$p.color)
     $uiPopDot.Fill = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(56, $c.R, $c.G, $c.B))
     $uiPopGlyph.Text = $p.glyph; $uiPopGlyph.Foreground = New-Brush ([string]$p.color)
+    if ($null -ne $p.ring) { Set-Ring $p.ring ([string]$p.color); $uiPopRing.Visibility = 'Visible' } else { $uiPopRing.Visibility = 'Collapsed' }
     $uiPopDot.Parent.Visibility = if ($p.image) { 'Collapsed' } else { 'Visible' }
     if ($p.image) { $uiPopImg.ImageSource = $p.image; $uiPopThumb.Visibility = 'Visible' } else { $uiPopThumb.Visibility = 'Collapsed' }
     $uiPopTitle.Text = $p.title
@@ -1604,6 +1615,14 @@ function Show-PopupView($p, $now) {
     $script:lastKey = $key
     Show-Pill
 }
+# A progress ring around the popup's icon (the timer), starting at 12 o'clock
+function Set-Ring([double]$frac, [string]$color) {
+    $f = Clamp $frac 0 0.9999
+    $a = 2 * [math]::PI * $f - [math]::PI / 2
+    $x = 14 + 12.5 * [math]::Cos($a); $y = 14 + 12.5 * [math]::Sin($a)
+    $uiPopRing.Data = [System.Windows.Media.Geometry]::Parse(('M14,1.5 A12.5,12.5 0 {0} 1 {1},{2}' -f $(if ($f -gt 0.5) { 1 } else { 0 }), $x.ToString($INV), $y.ToString($INV)))
+    $uiPopRing.Stroke = New-Brush $color
+}
 function Show-PopupNotch($p, $mon) {
     $t = [string]$p.title; if ($p.value) { $t = "$t  $($p.value)" } elseif ($p.sub) { $t = "$t  $DOT  $($p.sub)" }
     if ($t.Length -gt 48) { $t = $t.Substring(0, 47) + $ELL }
@@ -1618,6 +1637,37 @@ $script:locks = $null; $script:power = $null; $script:powerAt = 0
 $script:shotDirs = @(@((Join-Path ([Environment]::GetFolderPath('MyPictures')) 'Screenshots'),
                        (Join-Path $env:USERPROFILE 'Pictures\Screenshots')) | Select-Object -Unique)
 $script:shotStamp = @{}; $script:shotAt = 0
+$script:dlDir = try { (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path } catch { Join-Path $env:USERPROFILE 'Downloads' }
+$script:dlStamp = $null; $script:dlAt = 0; $script:dlSeen = @{}
+$script:clipSeq = $null; $script:dnd = $null; $script:dndAt = 0; $script:meetingSeen = @{}
+
+# ---- timer / Pomodoro (tray menu > Timer) -----------------------------------
+$script:timer = $null
+function Start-Timer([double]$minutes, [string]$label, [string]$phase = '') {
+    $now = Get-Now
+    $script:timer = @{ start = $now; end = $now + [int64]($minutes * 60000); label = $label; phase = $phase }
+    Update-Island
+}
+function Stop-Timer { $script:timer = $null; Update-Island }
+# The running timer as a popup-shaped view (no time limit), or $null; handles it running out
+function Get-TimerView($now) {
+    $tm = $script:timer
+    if (-not $tm) { return $null }
+    if ($now -ge $tm.end) {
+        $script:timer = $null
+        Play-Chime 'done'
+        if ($tm.phase -eq 'focus') {
+            Show-Popup 'timer' 0xE916 'Focus done' "Break for $($script:cfg.breakMinutes) min" '#34C759' 6
+            Start-Timer ([double]$script:cfg.breakMinutes) 'Break' 'break'
+        } elseif ($tm.phase -eq 'break') { Show-Popup 'timer' 0xE916 'Break over' 'Back to it' '#D97857' 6 }
+        else { Show-Popup 'timer' 0xE916 "Time's up" $tm.label '#D97857' 6 }
+        return $null
+    }
+    $left = $tm.end - $now
+    $color = if ($tm.phase -eq 'break') { '#34C759' } else { [string]$script:cfg.accent }
+    @{ key = 'timer'; glyph = [string][char]0xE916; title = $tm.label; sub = ''; color = $color; bar = $null
+       value = (Format-Elapsed $left); image = $null; open = $null; at = $tm.start; ring = 1 - $left / ($tm.end - $tm.start) }
+}
 function Poll-Events($now) {
     $c = $script:cfg
     if (-not $c.popups) { return }
@@ -1686,6 +1736,67 @@ function Poll-Events($now) {
                 } catch { }
                 Show-Popup 'shot' 0xE722 'Screenshot saved' 'Click to open' '#FFFFFF' 5 $null '' $img $f.FullName
             } catch { }
+        }
+    }
+    # downloads: a new finished file in Downloads (browsers rename the partial file when done)
+    if ($c.popupDownloads -and $script:dlDir -and $now - $script:dlAt -gt 1000) {
+        $script:dlAt = $now
+        try {
+            $stamp = [IO.Directory]::GetLastWriteTimeUtc($script:dlDir)
+            $was = $script:dlStamp; $script:dlStamp = $stamp
+            if ($was -and $stamp -gt $was) {
+                $f = Get-ChildItem -LiteralPath $script:dlDir -File | Where-Object {
+                        $_.Extension -notmatch '^\.(crdownload|part|partial|tmp|download|opdownload)$' -and $_.LastWriteTimeUtc -gt $was.AddSeconds(-2) -and -not $script:dlSeen.ContainsKey($_.FullName) } |
+                     Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+                if ($f) {
+                    $script:dlSeen[$f.FullName] = 1
+                    Show-Popup 'download' 0xE896 'Download finished' $f.Name '#34C759' 5 $null '' $null @('explorer.exe', "/select,`"$($f.FullName)`"")
+                }
+            }
+        } catch { }
+    }
+    # clipboard: Windows bumps a counter on every copy; password managers mark theirs as private
+    $seq = [IslandNative]::GetClipboardSequenceNumber()
+    if ($null -ne $script:clipSeq -and $seq -ne $script:clipSeq -and $c.popupClipboard) {
+        try {
+            $cb = [System.Windows.Clipboard]::GetDataObject()
+            $fmts = @($cb.GetFormats())
+            if ($fmts -contains 'ExcludeClipboardContentFromMonitorProcessing' -or $fmts -contains 'Clipboard Viewer Ignore') { }
+            elseif ([System.Windows.Clipboard]::ContainsText()) {
+                $txt = ([System.Windows.Clipboard]::GetText() -replace '\s+', ' ').Trim()
+                if ($txt) { Show-Popup 'clip' 0xE8C8 'Copied' $(if ($txt.Length -gt 70) { $txt.Substring(0, 69) + $ELL } else { $txt }) '#FFFFFF' 2.5 }
+            } elseif ([System.Windows.Clipboard]::ContainsImage()) {
+                Show-Popup 'clip' 0xE8C8 'Image copied' '' '#FFFFFF' 2.5 $null '' ([System.Windows.Clipboard]::GetImage())
+            } elseif ([System.Windows.Clipboard]::ContainsFileDropList()) {
+                $l = [System.Windows.Clipboard]::GetFileDropList()
+                Show-Popup 'clip' 0xE8C8 $(if ($l.Count -eq 1) { 'File copied' } else { "$($l.Count) files copied" }) ([IO.Path]::GetFileName($l[0])) '#FFFFFF' 2.5
+            }
+        } catch { }
+    }
+    $script:clipSeq = $seq
+    # Do Not Disturb (Windows 11 keeps it as "toasts disabled")
+    if ($now - $script:dndAt -gt 2000) {
+        $script:dndAt = $now
+        try {
+            $v = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings' -Name NOC_GLOBAL_SETTING_TOASTS_ENABLED -ErrorAction Stop).NOC_GLOBAL_SETTING_TOASTS_ENABLED
+            $dnd = ($v -eq 0)
+        } catch { $dnd = $false }
+        if ($null -ne $script:dnd -and $dnd -ne $script:dnd -and $c.popupFocus) {
+            Show-Popup 'dnd' 0xE708 $(if ($dnd) { 'Do not disturb on' } else { 'Do not disturb off' }) '' $(if ($dnd) { '#BF5AF2' } else { '#8E8E93' })
+        }
+        $script:dnd = $dnd
+    }
+    # calendar: a meeting starting soon (from the iCal link, fetched in the background)
+    $script:stats.icsUrl = [string]$c.calendarIcsUrl
+    $soon = [int](Clamp $c.calendarMinutes 1 120) * 60000
+    foreach ($ev in @($script:stats.meetings)) {
+        if (-not $ev) { continue }
+        $left = [int64]$ev.start - $now
+        $k = "$($ev.start)|$($ev.title)"
+        if ($left -gt 0 -and $left -le $soon -and -not $script:meetingSeen.ContainsKey($k)) {
+            $script:meetingSeen[$k] = 1
+            Show-Popup 'meeting' 0xE787 $ev.title ('Starts in {0} min' -f [math]::Max(1, [math]::Round($left / 60000))) '#FFB340' 10
+            Play-Chime 'needs'
         }
     }
     # queued from the background threads
@@ -1899,7 +2010,7 @@ $script:stats = [hashtable]::Synchronized(@{ on = $true; want = [bool]$script:cf
 $statsPs = [PowerShell]::Create()
 [void]$statsPs.AddScript({
     param($st)
-    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true
+    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true; $icsUrlWas = $null
     $smi = $null; try { $smi = (Get-Command nvidia-smi.exe -ErrorAction Stop).Source } catch { }
     while ($st.on) {
         try {
@@ -1950,6 +2061,32 @@ $statsPs = [PowerShell]::Create()
             }
             $netPrev = @($rx, $tx, $t)
         } catch { }
+        # calendar: fetch the iCal link every 5 minutes and keep the next day's events
+        $url = [string]$st.icsUrl
+        if ($url -and ($url -ne $icsUrlWas -or $tick % 150 -eq 0)) {
+            $icsUrlWas = $url
+            try {
+                $wc = New-Object System.Net.WebClient; $wc.Encoding = [Text.Encoding]::UTF8
+                $ics = $wc.DownloadString(($url -replace '^webcal://', 'https://'))
+                $lines = ($ics -replace "`r?`n[ `t]", '') -split "`r?`n"   # unfold continued lines
+                $list = @(); $ev = $null
+                $nowUtc = [DateTime]::UtcNow
+                foreach ($l in $lines) {
+                    if ($l -eq 'BEGIN:VEVENT') { $ev = @{} }
+                    elseif ($l -eq 'END:VEVENT' -and $ev) {
+                        if ($ev.start -and $ev.start -gt $nowUtc -and $ev.start -lt $nowUtc.AddDays(1)) {
+                            $list += @{ start = [DateTimeOffset]::new($ev.start).ToUnixTimeMilliseconds(); title = [string]$ev.title }
+                        }
+                        $ev = $null
+                    } elseif ($ev -and $l -match '^SUMMARY[^:]*:(.*)$') { $ev.title = $Matches[1] -replace '\\,', ',' -replace '\\n', ' ' }
+                    elseif ($ev -and $l -match '^DTSTART([^:]*):(\d{8}T\d{6})(Z?)$') {
+                        $d = [DateTime]::ParseExact($Matches[2], 'yyyyMMddTHHmmss', [Globalization.CultureInfo]::InvariantCulture)
+                        $ev.start = if ($Matches[3] -eq 'Z') { [DateTime]::SpecifyKind($d, 'Utc') } else { [DateTime]::SpecifyKind($d, 'Local').ToUniversalTime() }
+                    }
+                }
+                $st.meetings = $list
+            } catch { }
+        } elseif (-not $url) { $st.meetings = @() }
         # screen brightness (laptop screens; external monitors don't report it to Windows)
         if ($brightOK) {
             try {
@@ -2106,6 +2243,7 @@ function Update-Island {
             if ($mode -eq 'needs') { Show-Notch $mode $pick $now $fs }
             elseif ($pop) { Show-PopupNotch $pop $fs }
             elseif ($pick) { Show-Notch $mode $pick $now $fs }
+            elseif ($tv = Get-TimerView $now) { Set-NotchContent $tv.color "$($tv.title)  $($tv.value)" $tv.glyph; Show-NotchAt $fs }
             elseif ($script:cfg.fullscreenClock) { Set-NotchContent '#E6FFFFFF' ((Get-Date).ToShortTimeString()) ([char]0xE823); Show-NotchAt $fs }
             else { Hide-Notch }
             return
@@ -2114,6 +2252,7 @@ function Update-Island {
 
         # a notice takes over for a few seconds (but never over "needs you", or while expanded)
         if ($pop -and $mode -ne 'needs' -and -not $script:hover) { Show-PopupView $pop $now; return }
+        if (-not $pick -and ($tv = Get-TimerView $now)) { Show-PopupView $tv $now; return }
 
         if (-not $pick) {
             $m = $script:music
@@ -2253,7 +2392,10 @@ $uiPill.Add_PreviewMouseLeftButtonDown({ if ($script:cfg.clickThrough) { $script
 $uiPill.Add_MouseLeftButtonUp({
     $p = $script:popup
     if ($p -and $p.open) {   # e.g. a screenshot notice: open the file
-        try { Start-Process -FilePath ([string]$p.open) } catch { Write-Log ("open: " + $_.Exception.Message) }
+        try {
+            if ($p.open -is [array]) { Start-Process -FilePath ([string]$p.open[0]) -ArgumentList ([string]$p.open[1]) }
+            else { Start-Process -FilePath ([string]$p.open) }
+        } catch { Write-Log ("open: " + $_.Exception.Message) }
         $script:popup = $null; Update-Island; return
     }
     if ($script:dismissKey) { $script:dismissed[$script:dismissKey] = 1; Update-Island }
@@ -2326,7 +2468,21 @@ foreach ($pair in @(@('Show popups', 'popups'), @('Devices', 'popupDevices'), @(
                     @('Network and VPN', 'popupNetwork'), @('Screenshots', 'popupScreenshots'), @('Clock in fullscreen', 'fullscreenClock'))) {
     [void]$miPopups.DropDownItems.Add((New-Toggle $pair[0] $pair[1]))
 }
+$miPopups.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+foreach ($pair in @(@('Downloads', 'popupDownloads'), @('Clipboard', 'popupClipboard'), @('Do Not Disturb', 'popupFocus'))) {
+    [void]$miPopups.DropDownItems.Add((New-Toggle $pair[0] $pair[1]))
+}
 [void]$menu.Items.Add($miPopups)
+$miTimer = New-Object System.Windows.Forms.ToolStripMenuItem 'Timer'
+foreach ($m in 5, 10, 15, 30) {
+    $it = New-Object System.Windows.Forms.ToolStripMenuItem "$m minutes"; $it.Tag = $m
+    $it.Add_Click({ Start-Timer ([double]$this.Tag) "$($this.Tag) min timer" }); [void]$miTimer.DropDownItems.Add($it)
+}
+$itPomo = New-Object System.Windows.Forms.ToolStripMenuItem 'Pomodoro (focus, then a break)'
+$itPomo.Add_Click({ Start-Timer ([double]$script:cfg.timerMinutes) 'Focus' 'focus' }); [void]$miTimer.DropDownItems.Add($itPomo)
+$itStop = New-Object System.Windows.Forms.ToolStripMenuItem 'Stop timer'
+$itStop.Add_Click({ Stop-Timer }); [void]$miTimer.DropDownItems.Add($itStop)
+[void]$menu.Items.Add($miTimer)
 
 function Set-Companion($name) {
     $script:cfg.mascot = [string]$name; Save-Config; Apply-Companion; Mascot-Hop 'perk'

@@ -39,6 +39,10 @@ new file has no errors), a new hook script is used on Claude's next step, and
 | `data\agent-prices.json` | Model prices for the API-value estimate |
 | `state\` | Running state and `island.log` (safe to delete) |
 
+## Timer
+
+Tray menu → **Timer**: 5 / 10 / 15 / 30 minutes, or a Pomodoro (focus, then a break). It counts down in the island with a ring, and in the fullscreen notch.
+
 ## Tray menu
 
 Play a test run, Sound, Show while Claude works, Now playing, Click through,
@@ -110,6 +114,13 @@ Options added by future updates are filled in automatically.
 | `popupBattery` | `true` | Charger plugged in or out, battery at 20 / 10 / 5% (laptops) |
 | `popupNetwork` | `true` | Wi-Fi (with its name) or Ethernet connected / lost, VPN on / off |
 | `popupScreenshots` | `true` | A screenshot was saved to Pictures\Screenshots: a preview, click it to open |
+| `popupDownloads` | `true` | A download finished in your Downloads folder: click it to show the file |
+| `popupClipboard` | `true` | Something was copied: a short preview (password managers' copies are skipped) |
+| `popupFocus` | `true` | Do Not Disturb turned on or off |
+| `calendarIcsUrl` | `""` | Your calendar's private iCal link (Google Calendar: Settings → your calendar → "Secret address in iCal format"; Outlook.com: Settings → Calendar → Shared calendars → Publish). Then you get a reminder before each meeting. Repeating meetings aren't picked up yet |
+| `calendarMinutes` | `5` | How many minutes before a meeting to remind you |
+| `timerMinutes` | `25` | Pomodoro focus length (tray menu → Timer) |
+| `breakMinutes` | `5` | Pomodoro break length |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
 | `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
 | `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |
