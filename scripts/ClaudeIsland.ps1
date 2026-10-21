@@ -132,6 +132,35 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+// Core Audio: the default speakers' master volume and mute
+[ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IIslandEndpointVolume {
+    int RegisterControlChangeNotify(IntPtr p); int UnregisterControlChangeNotify(IntPtr p);
+    int GetChannelCount(out uint c);
+    int SetMasterVolumeLevel(float l, ref Guid ctx); int SetMasterVolumeLevelScalar(float l, ref Guid ctx);
+    int GetMasterVolumeLevel(out float l); int GetMasterVolumeLevelScalar(out float l);
+    int SetChannelVolumeLevel(uint ch, float l, ref Guid ctx); int SetChannelVolumeLevelScalar(uint ch, float l, ref Guid ctx);
+    int GetChannelVolumeLevel(uint ch, out float l); int GetChannelVolumeLevelScalar(uint ch, out float l);
+    int SetMute([MarshalAs(UnmanagedType.Bool)] bool m, ref Guid ctx); int GetMute([MarshalAs(UnmanagedType.Bool)] out bool m);
+}
+[ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IIslandMMDevice { int Activate(ref Guid iid, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o); }
+[ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IIslandMMDeviceEnumerator { int EnumAudioEndpoints(int flow, int mask, out IntPtr devs); int GetDefaultAudioEndpoint(int flow, int role, out IIslandMMDevice d); }
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class IslandMMDeviceEnumerator { }
+public static class IslandAudio {
+    static IIslandEndpointVolume Endpoint() {
+        var en = (IIslandMMDeviceEnumerator)new IslandMMDeviceEnumerator();
+        IIslandMMDevice d; Marshal.ThrowExceptionForHR(en.GetDefaultAudioEndpoint(0, 1, out d));
+        Guid iid = typeof(IIslandEndpointVolume).GUID; object o;
+        Marshal.ThrowExceptionForHR(d.Activate(ref iid, 23, IntPtr.Zero, out o));
+        return (IIslandEndpointVolume)o;
+    }
+    public static float GetVolume() { float v; Endpoint().GetMasterVolumeLevelScalar(out v); return v; }
+    public static void SetVolume(float v) { Guid g = Guid.Empty; Endpoint().SetMasterVolumeLevelScalar(Math.Max(0f, Math.Min(1f, v)), ref g); }
+    public static bool GetMute() { bool m; Endpoint().GetMute(out m); return m; }
+    public static void SetMute(bool m) { Guid g = Guid.Empty; Endpoint().SetMute(m, ref g); }
+}
 public static class IslandNative {
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
@@ -187,6 +216,10 @@ public static class IslandNative {
         ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual; }
     [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx([In, Out] MEMSTAT m);
     public static int MemoryLoad() { var m = new MEMSTAT(); return GlobalMemoryStatusEx(m) ? (int)m.dwMemoryLoad : -1; }
+    public static double[] MemoryGB() {   // used, total
+        var m = new MEMSTAT(); if (!GlobalMemoryStatusEx(m)) return null;
+        return new[] { (m.ullTotalPhys - m.ullAvailPhys) / 1073741824.0, m.ullTotalPhys / 1073741824.0 };
+    }
 
     // Fullscreen: the foreground window covers its whole monitor (and isn't the desktop or just
     // a maximized window with a title bar). Returns that monitor's rect in pixels, or null.
@@ -373,6 +406,13 @@ try {
         <!-- Music controls (hover) -->
         <StackPanel x:Name="MusicDetails" Visibility="Collapsed">
         <StackPanel Margin="2,12,2,0" MinWidth="250">
+          <!-- track info, only when the panel is opened from another view -->
+          <StackPanel x:Name="MPanelInfo" Margin="0,0,0,10" Visibility="Collapsed">
+            <TextBlock x:Name="MPanelTitle" Foreground="#FFFFFFFF" FontFamily="Segoe UI Variable Display, Segoe UI"
+                       FontSize="13" FontWeight="SemiBold" MaxWidth="300" TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="MPanelArtist" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
+                       FontSize="11.5" Margin="0,1,0,0" MaxWidth="300" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
           <Grid x:Name="ProgGrid" Height="4">
             <Border x:Name="ProgTrack" Background="#26FFFFFF" CornerRadius="2"/>
             <Border x:Name="ProgFill" Background="#E6FFFFFF" CornerRadius="2" HorizontalAlignment="Left" Width="0"/>
@@ -392,8 +432,44 @@ try {
               <TextBlock Text="&#xE893;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
           </StackPanel>
+          <!-- volume: speaker button mutes, the bar sets the level (click or drag) -->
+          <DockPanel Margin="0,6,0,2">
+            <Border x:Name="BtnMute" DockPanel.Dock="Left" Width="30" Height="26" CornerRadius="13" Background="#01FFFFFF">
+              <TextBlock x:Name="MuteGlyph" Text="&#xE767;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
+                         Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <TextBlock x:Name="VolText" DockPanel.Dock="Right" Width="34" TextAlignment="Right" Foreground="#80FFFFFF"
+                       FontFamily="Cascadia Mono, Consolas" FontSize="10.5" VerticalAlignment="Center"/>
+            <Grid x:Name="VolGrid" Height="18" Margin="6,0,4,0" Background="#01FFFFFF" Cursor="Hand">
+              <Border x:Name="VolTrack" Height="4" Background="#26FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <Border x:Name="VolFill" Height="4" Background="#E6FFFFFF" CornerRadius="2" VerticalAlignment="Center"
+                      HorizontalAlignment="Left" Width="0"/>
+            </Grid>
+          </DockPanel>
         </StackPanel>
         </StackPanel>
+
+        <!-- System stats (stats button) -->
+        <StackPanel x:Name="StatsPanel" Visibility="Collapsed">
+          <StackPanel Margin="2,12,2,0" MinWidth="250">
+            <Border Height="1" Background="#1FFFFFFF" Margin="0,0,0,8"/>
+            <StackPanel x:Name="StatLines"/>
+          </StackPanel>
+        </StackPanel>
+
+        <!-- Panel buttons, shown while expanded: music on the left, stats on the right -->
+        <Grid x:Name="Tools" Visibility="Collapsed" Margin="2,10,2,0">
+          <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
+            <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  HorizontalAlignment="Right" Cursor="Hand" ToolTip="System stats">
+            <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+        </Grid>
       </StackPanel>
       </Grid>
       </Grid>
@@ -402,7 +478,7 @@ try {
     <!-- Click-through hint, shown under the pill after hovering it for a while -->
     <Border x:Name="Hint" HorizontalAlignment="Center" VerticalAlignment="Top" Background="#E60B0B0D"
             CornerRadius="9" Padding="10,4,10,5" Opacity="0" IsHitTestVisible="False">
-      <TextBlock Text="Hold Ctrl to use the island" Foreground="#E6FFFFFF"
+      <TextBlock Text="Ctrl+click to use the island" Foreground="#E6FFFFFF"
                  FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="11.5"/>
     </Border>
   </Grid>
@@ -414,7 +490,9 @@ $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $x
 foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText','TimerText','Badge','BadgeText',
                'Details','Rows','ClaudeRow','MusicRow','Art','ArtNote','MTitle','MArtist','Eq','MusicDetails',
                'ProgGrid','ProgTrack','ProgFill','TimeGrid','PosText','DurText','BtnPrev','BtnPlay','BtnNext','PlayGlyph',
-               'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow') {
+               'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
+               'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
+               'StatsPanel','StatLines','Tools','BtnMusicPanel','BtnStatsPanel') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -945,7 +1023,7 @@ function Sync-Size {
     $script:sizeHover = $script:hover
     $ms = if ($hoverChanged) { Get-Ms 'expandMs' } else { Get-Ms 'resizeMs' }
     # Measure the natural size, counting panels that are on their way out as already gone
-    $closing = @($uiDetails, $uiMusicDetails | Where-Object { [string]$_.Tag -eq 'closing' })
+    $closing = @($uiDetails, $uiMusicDetails, $uiStatsPanel, $uiTools | Where-Object { [string]$_.Tag -eq 'closing' })
     foreach ($c in $closing) { $c.Visibility = 'Collapsed' }
     $uiInner.Width = [double]::NaN
     $uiInner.Measure((New-Object System.Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)))
@@ -1033,7 +1111,8 @@ function Hide-Pill {
     if (-not $script:shown) { return }
     $script:shown = $false
     $script:hover = $false
-    $uiDetails.Visibility = 'Collapsed'; $uiMusicDetails.Visibility = 'Collapsed'; $uiDetails.Tag = ''; $uiMusicDetails.Tag = ''
+    foreach ($p in $uiDetails, $uiMusicDetails, $uiStatsPanel, $uiTools) { $p.Visibility = 'Collapsed'; $p.Tag = '' }
+    $script:panel = ''
     $uiPill.IsHitTestVisible = $false
     $ease = New-Object System.Windows.Media.Animation.CubicEase
     $ease.EasingMode = 'EaseIn'
@@ -1327,23 +1406,7 @@ function Show-Music($m, $now) {
     Set-Look $(if ($m.playing) { 'music' } else { 'musicpaused' })
     Set-Text $uiMTitle ([string]$m.title)
     Set-Text $uiMArtist ([string]$(if ($m.artist) { $m.artist } else { $m.appName }))
-    $uiPlayGlyph.Text = if ($m.playing) { $GLYPH_PAUSE } else { $GLYPH_PLAY }
-    if ($script:hover) {
-        Fade-In $uiMusicDetails
-        if ($m.dur -gt 1000) {
-            $pos = [double]$m.pos
-            if ($m.playing) { $pos += ($now - [int64]$m.stamp) }
-            $pos = [math]::Min([double]$m.dur, [math]::Max(0, $pos))
-            $uiProgGrid.Visibility = 'Visible'; $uiTimeGrid.Visibility = 'Visible'
-            $uiProgFill.Width = [math]::Max(0, $uiProgTrack.ActualWidth * ($pos / $m.dur))
-            $uiPosText.Text = Format-Elapsed $pos
-            $uiDurText.Text = '-' + (Format-Elapsed ($m.dur - $pos))
-        } else {
-            $uiProgGrid.Visibility = 'Collapsed'; $uiTimeGrid.Visibility = 'Collapsed'
-        }
-    } else {
-        Shrink-Out $uiMusicDetails
-    }
+    Update-Panels 'music' $null $now
     $script:dismissKey = ''
     Set-View 'music'
     Sync-Size
@@ -1351,6 +1414,142 @@ function Show-Music($m, $now) {
     if ($script:shown -and $key -ne $script:lastKey) { Bump-Pill }
     $script:lastKey = $key
     Show-Pill
+}
+
+# ---- expanded panels ------------------------------------------------------
+# While expanded, round buttons open a panel: music and volume (left), system stats (right).
+# Without a choice, each view opens its own: Claude shows sessions, music shows its controls.
+# Like Vorssaint's notch shelf buttons. $script:panel is '', 'none', 'music' or 'stats'.
+$script:panel = ''; $script:holdUntil = 0
+function Get-WantPanel($view) {
+    if ($script:panel -eq 'none') { return '' }
+    if ($script:panel) { return $script:panel }
+    switch ($view) { 'music' { 'music' } 'claude' { 'sessions' } default { '' } }
+}
+function Update-Panels($view, $sessions, $now) {
+    if (-not $script:hover) { $script:panel = '' }
+    $want = Get-WantPanel $view
+    if ($script:hover -and $want -eq 'sessions') { Render-Details $sessions $now } else { Shrink-Out $uiDetails }
+    if ($script:hover -and $want -eq 'music') { Fill-MusicPanel $view $now; Grow-In $uiMusicDetails } else { Shrink-Out $uiMusicDetails }
+    if ($script:hover -and $want -eq 'stats') { Fill-StatsPanel; Grow-In $uiStatsPanel } else { Shrink-Out $uiStatsPanel }
+    if ($script:hover) { Grow-In $uiTools } else { Shrink-Out $uiTools }
+    $uiBtnMusicPanel.Background = New-Brush $(if ($want -eq 'music') { '#4DFFFFFF' } else { '#1AFFFFFF' })
+    $uiBtnStatsPanel.Background = New-Brush $(if ($want -eq 'stats') { '#4DFFFFFF' } else { '#1AFFFFFF' })
+}
+function Toggle-Panel($which) {
+    $script:panel = if ((Get-WantPanel $script:viewKind) -eq $which) { 'none' } else { $which }
+    $script:holdUntil = (Get-Now) + 1500   # the pill resizes under the cursor; don't treat that as leaving
+    Update-Island
+}
+$uiBtnMusicPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Toggle-Panel 'music' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
+$uiBtnStatsPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Toggle-Panel 'stats' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
+
+function Fill-MusicPanel($view, $now) {
+    $m = $script:music
+    $uiMPanelInfo.Visibility = if ($view -ne 'music') { 'Visible' } else { 'Collapsed' }
+    if ($m) {
+        $uiMPanelTitle.Text = [string]$m.title
+        $uiMPanelArtist.Text = [string]$(if ($m.artist) { $m.artist } else { $m.appName })
+    } else { $uiMPanelTitle.Text = 'Nothing playing'; $uiMPanelArtist.Text = '' }
+    $uiPlayGlyph.Text = if ($m -and $m.playing) { $GLYPH_PAUSE } else { $GLYPH_PLAY }
+    if ($m -and $m.dur -gt 1000) {
+        $pos = [double]$m.pos
+        if ($m.playing) { $pos += ($now - [int64]$m.stamp) }
+        $pos = [math]::Min([double]$m.dur, [math]::Max(0, $pos))
+        $uiProgGrid.Visibility = 'Visible'; $uiTimeGrid.Visibility = 'Visible'
+        $uiProgFill.Width = [math]::Max(0, $uiProgTrack.ActualWidth * ($pos / $m.dur))
+        $uiPosText.Text = Format-Elapsed $pos
+        $uiDurText.Text = '-' + (Format-Elapsed ($m.dur - $pos))
+    } else {
+        $uiProgGrid.Visibility = 'Collapsed'; $uiTimeGrid.Visibility = 'Collapsed'
+    }
+    Update-Volume
+}
+function Update-Volume {
+    try { $v = [IslandAudio]::GetVolume(); $mute = [IslandAudio]::GetMute() } catch { $uiVolText.Text = '--'; return }
+    $uiVolFill.Width = [math]::Max(0, $uiVolTrack.ActualWidth * $v)
+    $uiVolFill.Background = New-Brush $(if ($mute) { '#59FFFFFF' } else { '#E6FFFFFF' })
+    $uiVolText.Text = '{0}%' -f [int][math]::Round($v * 100)
+    $uiMuteGlyph.Text = [string][char]$(if ($mute) { 0xE74F } else { 0xE767 })
+}
+function Set-Volume([double]$v) {
+    try { [IslandAudio]::SetVolume([float](Clamp $v 0 1)); if ([IslandAudio]::GetMute()) { [IslandAudio]::SetMute($false) } } catch { }
+    Update-Volume
+}
+function Set-VolFromMouse($e) {
+    $w = $uiVolGrid.ActualWidth
+    if ($w -gt 0) { Set-Volume ($e.GetPosition($uiVolGrid).X / $w) }
+}
+$uiVolGrid.Add_MouseLeftButtonDown({ param($s, $e) $e.Handled = $true; [void]$uiVolGrid.CaptureMouse(); Set-VolFromMouse $e })
+$uiVolGrid.Add_MouseMove({ param($s, $e) if ($uiVolGrid.IsMouseCaptured) { Set-VolFromMouse $e } })
+$uiVolGrid.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; $uiVolGrid.ReleaseMouseCapture() })
+$uiMusicDetails.Add_MouseWheel({
+    param($s, $e) $e.Handled = $true
+    try { Set-Volume ([IslandAudio]::GetVolume() + [math]::Sign($e.Delta) * 0.02) } catch { }
+})
+$uiBtnMute.Add_MouseEnter({ $this.Background = New-Brush '#1FFFFFFF' })
+$uiBtnMute.Add_MouseLeave({ $this.Background = New-Brush '#01FFFFFF' })
+$uiBtnMute.Add_MouseLeftButtonUp({
+    param($s, $e) $e.Handled = $true
+    try { [IslandAudio]::SetMute(-not [IslandAudio]::GetMute()) } catch { }
+    Update-Volume
+})
+
+$script:statLines = $null
+function New-StatLine($label) {
+    $g = New-Object System.Windows.Controls.Grid
+    $g.Margin = New-Object System.Windows.Thickness(0, 0, 0, 7)
+    foreach ($w in 46, -1, 120) {
+        $c = New-Object System.Windows.Controls.ColumnDefinition
+        $c.Width = if ($w -lt 0) { New-Object System.Windows.GridLength(1, 'Star') } else { New-Object System.Windows.GridLength($w) }
+        $g.ColumnDefinitions.Add($c)
+    }
+    $l = New-Object System.Windows.Controls.TextBlock
+    $l.Text = $label; $l.Foreground = New-Brush '#80FFFFFF'; $l.FontSize = 11; $l.FontWeight = 'SemiBold'; $l.VerticalAlignment = 'Center'
+    $l.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'
+    $bar = New-Object System.Windows.Controls.Grid
+    $bar.Height = 4; $bar.VerticalAlignment = 'Center'; $bar.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
+    [System.Windows.Controls.Grid]::SetColumn($bar, 1)
+    $track = New-Object System.Windows.Controls.Border; $track.Background = New-Brush '#26FFFFFF'; $track.CornerRadius = 2
+    $fill = New-Object System.Windows.Controls.Border; $fill.Background = New-Brush '#E6FFFFFF'; $fill.CornerRadius = 2
+    $fill.RenderTransformOrigin = New-Object System.Windows.Point(0, 0.5)
+    $fill.RenderTransform = New-Object System.Windows.Media.ScaleTransform(0, 1)
+    [void]$bar.Children.Add($track); [void]$bar.Children.Add($fill)
+    $v = New-Object System.Windows.Controls.TextBlock
+    $v.Foreground = New-Brush '#FFFFFFFF'; $v.FontSize = 12; $v.VerticalAlignment = 'Center'; $v.TextAlignment = 'Right'
+    $v.FontFamily = New-Object System.Windows.Media.FontFamily 'Cascadia Mono, Consolas'
+    [System.Windows.Controls.Grid]::SetColumn($v, 2)
+    foreach ($x in $l, $bar, $v) { [void]$g.Children.Add($x) }
+    [void]$uiStatLines.Children.Add($g)
+    @{ bar = $bar; fill = $fill; value = $v }
+}
+function Set-StatLine($line, $frac, [string]$text) {
+    if ($null -eq $frac) { $line.bar.Visibility = 'Hidden' }
+    else { $line.bar.Visibility = 'Visible'; $line.fill.RenderTransform.ScaleX = Clamp $frac 0 1 }
+    $line.value.Text = $text
+}
+function Fill-StatsPanel {
+    if (-not $script:statLines) {
+        $script:statLines = [ordered]@{
+            cpu = New-StatLine 'CPU'; gpu = New-StatLine 'GPU'; ram = New-StatLine 'RAM'
+            down = New-StatLine 'DOWN'; up = New-StatLine 'UP'
+        }
+        $script:statNote = New-Object System.Windows.Controls.TextBlock
+        $script:statNote.Text = 'CPU temperature needs LibreHardwareMonitor running'
+        $script:statNote.Foreground = New-Brush '#66FFFFFF'; $script:statNote.FontSize = 10.5; $script:statNote.Margin = New-Object System.Windows.Thickness(0, 1, 0, 2)
+        [void]$uiStatLines.Children.Add($script:statNote)
+    }
+    $st = $script:stats; $L = $script:statLines; $deg = [string][char]0x00B0 + 'C'
+    $t = if ($null -ne $st.cpu) { "$($st.cpu)%" } else { '--' }; if ($null -ne $st.cpuTemp) { $t += "  $($st.cpuTemp)$deg" }
+    Set-StatLine $L.cpu $(if ($null -ne $st.cpu) { $st.cpu / 100 }) $t
+    $t = if ($null -ne $st.gpu) { "$($st.gpu)%" } else { '--' }; if ($null -ne $st.gpuTemp) { $t += "  $($st.gpuTemp)$deg" }
+    Set-StatLine $L.gpu $(if ($null -ne $st.gpu) { $st.gpu / 100 }) $t
+    $gb = $st.ramGB
+    $t = if ($gb) { '{0} / {1} GB' -f $gb[0].ToString('0.0', $INV), $gb[1].ToString('0', $INV) } else { '--' }
+    Set-StatLine $L.ram $(if ($null -ne $st.ram -and $st.ram -ge 0) { $st.ram / 100 }) $t
+    Set-StatLine $L.down $null ((Format-Rate $st.down) + 'B/s')
+    Set-StatLine $L.up $null ((Format-Rate $st.up) + 'B/s')
+    $script:statNote.Visibility = if ($null -eq $st.cpuTemp) { 'Visible' } else { 'Collapsed' }
 }
 
 # ---- system stats ---------------------------------------------------------
@@ -1377,6 +1576,7 @@ $statsPs = [PowerShell]::Create()
                 $prev = @($i, $k, $u)
             }
             $st.ram = [IslandNative]::MemoryLoad()
+            $st.ramGB = [IslandNative]::MemoryGB()
         } catch { }
         try {
             $rx = 0L; $tx = 0L
@@ -1472,9 +1672,9 @@ function Render-Stats {
 }
 function Show-Stats {
     $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Visible'
-    $uiDetails.Visibility = 'Collapsed'; $uiDetails.Tag = ''; $uiMusicDetails.Visibility = 'Collapsed'; $uiMusicDetails.Tag = ''
     Set-Look 'stats'
     Render-Stats
+    Update-Panels 'stats' $null (Get-Now)
     $script:dismissKey = ''
     Set-View 'stats'
     Sync-Size
@@ -1579,7 +1779,7 @@ function Update-Island {
         $others = if ($mode -eq 'done') { $active } else { $active - 1 }
         if ($others -gt 0) { $uiBadgeText.Text = "+$others"; $uiBadge.Visibility = 'Visible' } else { $uiBadge.Visibility = 'Collapsed' }
 
-        if ($script:hover) { Render-Details $sessions $now } else { Shrink-Out $uiDetails }
+        Update-Panels 'claude' $sessions $now
 
         Set-View 'claude'
         Sync-Size
@@ -1636,9 +1836,9 @@ $hoverTimer.Add_Tick({
     try {
         if ($script:textFlags.swapped) { $script:textFlags.swapped = $false; if ($script:shown) { Sync-Size } }
         $ctrl = ([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Control) -ne 0
-        $through = [bool]$script:cfg.clickThrough -and -not $ctrl
+        $through = [bool]$script:cfg.clickThrough -and -not $ctrl -and -not $script:sticky
         Set-PassThru $through
-        if (-not $script:shown -or $uiPill.Opacity -lt 0.9) { Set-Peek $false; Set-Hint $false; $script:hintMs = 0; $script:hoverIn = 0; $script:hoverOut = 0; return }
+        if (-not $script:shown -or $uiPill.Opacity -lt 0.9) { $script:sticky = $false; Set-Peek $false; Set-Hint $false; $script:hintMs = 0; $script:hoverIn = 0; $script:hoverOut = 0; return }
         if ($through) {
             $over = Test-CursorOnPill 0
             Set-Peek $over
@@ -1650,19 +1850,24 @@ $hoverTimer.Add_Tick({
         }
         Set-Peek $false; Set-Hint $false; $script:hintMs = 0
         if ($script:hover) {
-            if (Test-CursorOnPill 10) { $script:hoverOut = 0 }
+            if ((Test-CursorOnPill 10) -or $uiVolGrid.IsMouseCaptured -or (Get-Now) -lt $script:holdUntil) { $script:hoverOut = 0 }
             else {
                 $script:hoverOut += 50
-                if ($script:hoverOut -ge 250) { $script:hover = $false; $script:hoverOut = 0; Update-Island }
+                # back to neutral: click-through resumes (see $script:sticky)
+                if ($script:hoverOut -ge 250) { $script:hover = $false; $script:hoverOut = 0; $script:sticky = $false; Update-Island }
             }
         } else {
             if (Test-CursorOnPill 0) {
                 $script:hoverIn += 50
                 if ($script:hoverIn -ge 100) { $script:hover = $true; $script:hoverIn = 0; Update-Island }
-            } else { $script:hoverIn = 0 }
+            } else { $script:hoverIn = 0; $script:sticky = $false }
         }
     } catch { }
 })
+
+# One Ctrl+click is enough: the island then stays clickable until it collapses back
+$script:sticky = $false
+$uiPill.Add_PreviewMouseLeftButtonDown({ if ($script:cfg.clickThrough) { $script:sticky = $true } })
 
 # Click the pill to dismiss "Task complete" / "Needs your input"; click the mascot to say hi
 $uiPill.Add_MouseLeftButtonUp({

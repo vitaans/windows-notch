@@ -94,7 +94,7 @@ Options added by future updates are filled in automatically.
 | `showWorking` | `true` | Show the pill while Claude works |
 | `music` | `true` | Show what's playing when Claude is idle |
 | `musicPausedSeconds` | `4` | Keep the music pill this long after pausing |
-| `clickThrough` | `true` | Clicks go through the pill to whatever is under it. Hold Ctrl to hover or click the pill |
+| `clickThrough` | `true` | Clicks go through the pill to whatever is under it. Ctrl+click it once and it stays clickable until it collapses again |
 | `peekOpacity` | `0.25` | With click-through on, the pill fades to this while the cursor is over it (1 = no fade) |
 | `fullscreenNotch` | `true` | While a fullscreen app is in front, show a slim notch at the top edge instead of the pill |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
@@ -102,6 +102,10 @@ Options added by future updates are filled in automatically.
 | `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |
 
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
+
+**Expanded island**: hover it (Ctrl+click first when click-through is on) to expand it. The round
+button on the left opens music and volume controls (click or drag the bar, scroll to adjust, the
+speaker mutes); the one on the right opens system stats. Click a button again to close its panel.
 
 **System stats**: CPU and GPU load, RAM use and network speed work out of the box.
 Temperatures need [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
