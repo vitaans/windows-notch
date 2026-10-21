@@ -66,6 +66,8 @@ $script:cfg = [ordered]@{
     showWorking        = $true      # show the pill while Claude is working
     music              = $true      # show what's playing when Claude is idle
     musicPausedSeconds = 4          # keep the music pill this long after pausing
+    clickThrough       = $true      # clicks go through the pill to what's under it; hold Ctrl to hover/click the pill
+    peekOpacity        = 0.25       # with click-through on, the pill fades to this while the cursor is over it (1 = no fade)
     mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a companions folder name
     # --- colors
     accent             = '#D97857'  # working (Claude coral)
@@ -1320,6 +1322,22 @@ function Update-Island {
 # (not WPF enter/leave events), with a short delay in and a padded, slower way out, so the
 # pill growing or re-centering under the cursor can't make it flicker.
 $script:hoverIn = 0; $script:hoverOut = 0
+# Click-through: WS_EX_TRANSPARENT lets clicks fall to the window underneath. Holding Ctrl
+# turns it off so the pill can be hovered and clicked; otherwise it fades while you're over it.
+$script:passThru = $false; $script:peek = $false
+function Set-PassThru([bool]$on) {
+    if ($on -eq $script:passThru -or -not $script:mainHwnd) { return }
+    $ex = [IslandNative]::GetWindowLong($script:mainHwnd, -20)
+    $ex = if ($on) { $ex -bor 0x20 } else { $ex -band (-bnot 0x20) }
+    [void][IslandNative]::SetWindowLong($script:mainHwnd, -20, $ex)
+    $script:passThru = $on
+}
+function Set-Peek([bool]$on) {
+    if ($on -eq $script:peek) { return }
+    $script:peek = $on
+    $to = if ($on) { Clamp $script:cfg.peekOpacity 0 1 } else { 1 }
+    Animate $uiRootGrid $OpacityProp $to 150
+}
 function Test-CursorOnPill([double]$padDip) {
     $src = [System.Windows.PresentationSource]::FromVisual($win)
     if (-not $src -or $uiPill.ActualWidth -le 0) { return $false }
@@ -1335,7 +1353,17 @@ $hoverTimer.Interval = [TimeSpan]::FromMilliseconds(50)
 $hoverTimer.Add_Tick({
     try {
         if ($script:textFlags.swapped) { $script:textFlags.swapped = $false; if ($script:shown) { Sync-Size } }
-        if (-not $script:shown -or $uiPill.Opacity -lt 0.9) { $script:hoverIn = 0; $script:hoverOut = 0; return }
+        $ctrl = ([System.Windows.Forms.Control]::ModifierKeys -band [System.Windows.Forms.Keys]::Control) -ne 0
+        $through = [bool]$script:cfg.clickThrough -and -not $ctrl
+        Set-PassThru $through
+        if (-not $script:shown -or $uiPill.Opacity -lt 0.9) { Set-Peek $false; $script:hoverIn = 0; $script:hoverOut = 0; return }
+        if ($through) {
+            Set-Peek (Test-CursorOnPill 0)
+            $script:hoverIn = 0
+            if ($script:hover) { $script:hover = $false; $script:hoverOut = 0; Update-Island }
+            return
+        }
+        Set-Peek $false
         if ($script:hover) {
             if (Test-CursorOnPill 10) { $script:hoverOut = 0 }
             else {
@@ -1414,6 +1442,7 @@ $miTest.Add_Click({ Start-Test })
 [void]$menu.Items.Add((New-Toggle 'Sound' 'sound'))
 [void]$menu.Items.Add((New-Toggle 'Show while Claude works' 'showWorking'))
 [void]$menu.Items.Add((New-Toggle 'Now playing' 'music'))
+[void]$menu.Items.Add((New-Toggle 'Click through (hold Ctrl to use)' 'clickThrough'))
 
 function Set-Companion($name) {
     $script:cfg.mascot = [string]$name; Save-Config; Apply-Companion; Mascot-Hop 'perk'
