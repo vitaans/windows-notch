@@ -54,6 +54,8 @@
     "breakMinutes":  5,
     "sleepAfterMinutes":  5,
     "weatherCity":  "",
+    "updateCheck":  true,
+    "updateRepo":  "kilicaslanalper/windows-notch",
     "stats":  true,
     "statsItems":  "cpu,gpu,ram,net",
     "mascot":  "Pixel Cat",

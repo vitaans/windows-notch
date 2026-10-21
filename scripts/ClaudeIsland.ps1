@@ -32,6 +32,7 @@ $CfgPath  = Join-Path $Root 'settings.json'
 $oldCfg   = Join-Path $Root 'config.json'
 if ((Test-Path $oldCfg) -and -not (Test-Path $CfgPath)) { try { Move-Item $oldCfg $CfgPath } catch { } }
 $LogPath  = Join-Path $StateDir 'island.log'
+$script:Version = try { ([IO.File]::ReadAllText((Join-Path $Root 'VERSION'))).Trim() } catch { '0.0.0' }
 New-Item -ItemType Directory -Force -Path $SessDir, $CompDir | Out-Null
 
 # ---- single instance ------------------------------------------------------
@@ -101,6 +102,8 @@ $script:cfg = [ordered]@{
     breakMinutes       = 5          # Pomodoro: break length
     sleepAfterMinutes  = 5          # the companion falls asleep after this long without mouse or keyboard (0 = never)
     weatherCity        = ''         # a city name (e.g. Istanbul) to show the weather in the stats; empty = off
+    updateCheck        = $true      # once a day, look for a newer release on GitHub (you're asked before anything installs)
+    updateRepo         = 'kilicaslanalper/windows-notch'   # where releases come from
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
     mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
@@ -1861,6 +1864,13 @@ function Poll-Events($now) {
                     else { Show-Popup 'device' $glyph 'Disconnected' "$name$more" '#8E8E93' }
                 }
                 'net' { if ($c.popupNetwork) { Show-Popup 'net' $e.glyph $e.title $e.sub $e.color } }
+                'update' {
+                    $script:update = $e
+                    $miUpdate.Text = "Install update v$($e.version)"; $miUpdate.Visible = $true
+                    Show-Popup 'update' 0xE896 "Update available: v$($e.version)" 'Click to install, or tray menu > Install update' '#8AB4FF' 12 $null '' $null '::update'
+                }
+                'uptodate' { Show-Popup 'update' 0xE73E 'Up to date' "v$($e.version) is the latest" '#34C759' }
+                'updateerr' { Show-Popup 'update' 0xE783 "Couldn't check for updates" $e.text '#FFB340' 6 }
                 'brightness' { if ($c.popupVolume) { Show-Popup 'brightness' 0xE706 'Brightness' '' '#FFFFFF' 1.6 ($e.value / 100) "$($e.value)%" } }
             }
         } catch { }
@@ -2072,7 +2082,7 @@ $script:stats = [hashtable]::Synchronized(@{ on = $true; want = [bool]$script:cf
 $statsPs = [PowerShell]::Create()
 [void]$statsPs.AddScript({
     param($st)
-    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true; $icsUrlWas = $null; $gh = $null; $ghPrev = $null; $wxCity = $null; $wxGeo = $null
+    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true; $icsUrlWas = $null; $gh = $null; $ghPrev = $null; $wxCity = $null; $wxGeo = $null; $updAt = [DateTime]::UtcNow.AddMinutes(-1439)
     $smi = $null; try { $smi = (Get-Command nvidia-smi.exe -ErrorAction Stop).Source } catch { }
     while ($st.on) {
         try {
@@ -2149,6 +2159,22 @@ $statsPs = [PowerShell]::Create()
                 $st.meetings = $list
             } catch { }
         } elseif (-not $url) { $st.meetings = @() }
+        # updates: the latest release on GitHub, once a day (first look a minute after start) or when asked
+        if (($st.updateCheck -and [DateTime]::UtcNow -gt $updAt.AddDays(1)) -or $st.checkNow) {
+            $manual = [bool]$st.checkNow; $st.checkNow = $false; $updAt = [DateTime]::UtcNow
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                $wc = New-Object System.Net.WebClient; $wc.Headers.Add('User-Agent', 'windows-notch'); $wc.Encoding = [Text.Encoding]::UTF8
+                $rel = $wc.DownloadString("https://api.github.com/repos/$($st.updateRepo)/releases/latest") | ConvertFrom-Json
+                $latest = ([string]$rel.tag_name).TrimStart('v', 'V')
+                $asset = @($rel.assets | Where-Object { $_.name -like '*.zip' }) | Select-Object -First 1
+                $url = if ($asset) { [string]$asset.browser_download_url } else { [string]$rel.zipball_url }
+                if ([version]$latest -gt [version]$st.version) { $st.q.Enqueue(@{ kind = 'update'; version = $latest; url = $url; notes = [string]$rel.name }) }
+                elseif ($manual) { $st.q.Enqueue(@{ kind = 'uptodate'; version = $st.version }) }
+            } catch {
+                if ($manual) { $st.q.Enqueue(@{ kind = 'updateerr'; text = 'No releases found (is the repo public?)' }) }
+            }
+        }
         # weather (Open-Meteo, free and keyless): look the city up once, then every 15 minutes
         $city = [string]$st.weatherCity
         if (-not $city) { $st.weather = $null }
@@ -2316,6 +2342,7 @@ function Update-Island {
     try {
         $now = Get-Now
         $script:stats.want = [bool]$script:cfg.stats; $script:stats.weatherCity = [string]$script:cfg.weatherCity
+        $script:stats.updateCheck = [bool]$script:cfg.updateCheck; $script:stats.updateRepo = [string]$script:cfg.updateRepo; $script:stats.version = $script:Version
         $sessions = New-Object System.Collections.ArrayList
         foreach ($f in [IO.Directory]::GetFiles($SessDir, '*.json')) {
             try { $s = [IO.File]::ReadAllText($f) | ConvertFrom-Json } catch { continue }
@@ -2510,7 +2537,8 @@ $uiPill.Add_MouseLeftButtonUp({
     $p = $script:popup
     if ($p -and $p.open) {   # e.g. a screenshot notice: open the file
         try {
-            if ($p.open -is [array]) { Start-Process -FilePath ([string]$p.open[0]) -ArgumentList ([string]$p.open[1]) }
+            if ($p.open -eq '::update') { Start-Update }
+            elseif ($p.open -is [array]) { Start-Process -FilePath ([string]$p.open[0]) -ArgumentList ([string]$p.open[1]) }
             else { Start-Process -FilePath ([string]$p.open) }
         } catch { Write-Log ("open: " + $_.Exception.Message) }
         $script:popup = $null; Update-Island; return
@@ -2662,6 +2690,24 @@ $miStartup.Checked = (Test-Path -LiteralPath $script:startupLnk)
 $miStartup.Add_Click({ Set-Autostart $miStartup.Checked; $miStartup.Checked = (Test-Path -LiteralPath $script:startupLnk) })
 [void]$menu.Items.Add($miStartup)
 
+# Updates: check now, and install once one is found (the updater runs on its own and restarts the island)
+$script:update = $null
+function Start-Update {
+    $u = $script:update
+    if (-not $u) { return }
+    $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $upd = Join-Path $PSScriptRoot 'update.ps1'
+    Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$upd`" -Url `"$($u.url)`" -Version `"$($u.version)`"" -WindowStyle Hidden
+    Show-Popup 'update' 0xE896 "Updating to v$($u.version)$ELL" 'The island restarts when it''s done' '#8AB4FF' 30
+}
+$miCheck = New-Object System.Windows.Forms.ToolStripMenuItem "Check for updates (v$script:Version)"
+$miCheck.Add_Click({ $script:stats.checkNow = $true })
+[void]$menu.Items.Add($miCheck)
+$miUpdate = New-Object System.Windows.Forms.ToolStripMenuItem 'Install update'
+$miUpdate.Visible = $false
+$miUpdate.Add_Click({ Start-Update })
+[void]$menu.Items.Add($miUpdate)
+
 $miClear = New-Object System.Windows.Forms.ToolStripMenuItem 'Clear stuck sessions'
 $miClear.Add_Click({ Get-ChildItem $SessDir -File | Remove-Item -Force -ErrorAction SilentlyContinue; Update-Island })
 [void]$menu.Items.Add($miClear)
@@ -2682,6 +2728,12 @@ $miQuit.Add_Click({
 [void]$menu.Items.Add($miQuit)
 $tray.ContextMenuStrip = $menu
 $tray.Add_DoubleClick({ Start-Test })
+
+# After an update, say so once
+$verFile = Join-Path $StateDir 'version'
+$prevVer = try { ([IO.File]::ReadAllText($verFile)).Trim() } catch { '' }
+if ($prevVer -and $prevVer -ne $script:Version) { Show-Popup 'update' 0xE73E "Updated to v$script:Version" '' '#34C759' 6 }
+try { [IO.File]::WriteAllText($verFile, $script:Version) } catch { }
 
 # ---- run ------------------------------------------------------------------
 $app = New-Object System.Windows.Application
