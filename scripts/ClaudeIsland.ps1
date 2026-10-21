@@ -567,7 +567,10 @@ $win.Add_SourceInitialized({
         Title="Claude Island Notch" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False"
         ResizeMode="NoResize" SizeToContent="WidthAndHeight" UseLayoutRounding="True">
-  <Border x:Name="NBar" Background="#000000" CornerRadius="0,0,11,11" Height="28" MinWidth="150" Padding="11,0,13,0">
+  <!-- VerticalAlignment Top: Windows keeps windows at least ~39 px tall, so a centered
+       28 px bar would float a few pixels below the screen edge -->
+  <Border x:Name="NBar" Background="#000000" CornerRadius="0,0,11,11" Height="28" MinWidth="150" Padding="11,0,13,0"
+          VerticalAlignment="Top">
     <DockPanel LastChildFill="False">
       <Path x:Name="NIcon" DockPanel.Dock="Left" Width="13" Height="13" VerticalAlignment="Center" Stretch="Uniform"
             Data="M6.5,0 L6.5,13 M0,6.5 L13,6.5 M1.9,1.9 L11.1,11.1 M11.1,1.9 L1.9,11.1"
