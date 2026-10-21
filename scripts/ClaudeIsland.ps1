@@ -94,6 +94,7 @@ $script:cfg = [ordered]@{
     popupDownloads     = $true      # a download finished (Downloads folder): click to show it
     popupClipboard     = $true      # something was copied: a short preview (password managers' copies are skipped)
     popupFocus         = $true      # Do Not Disturb turned on or off
+    popupGitHub        = $true      # your open pull requests: checks passed / failed, approved (needs the gh CLI, signed in)
     calendarIcsUrl     = ''         # your calendar's private iCal (.ics) link, for "meeting in 5 minutes"
     calendarMinutes    = 5          # how early to remind you of a meeting
     timerMinutes       = 25         # Pomodoro: focus length (tray menu > Timer)
@@ -1640,6 +1641,8 @@ $script:shotStamp = @{}; $script:shotAt = 0
 $script:dlDir = try { (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path } catch { Join-Path $env:USERPROFILE 'Downloads' }
 $script:dlStamp = $null; $script:dlAt = 0; $script:dlSeen = @{}
 $script:clipSeq = $null; $script:dnd = $null; $script:dndAt = 0; $script:meetingSeen = @{}
+$script:inboxDir = Join-Path $StateDir 'inbox'; $script:inboxAt = 0
+New-Item -ItemType Directory -Force -Path $script:inboxDir | Out-Null
 
 # ---- timer / Pomodoro (tray menu > Timer) -----------------------------------
 $script:timer = $null
@@ -1788,6 +1791,7 @@ function Poll-Events($now) {
     }
     # calendar: a meeting starting soon (from the iCal link, fetched in the background)
     $script:stats.icsUrl = [string]$c.calendarIcsUrl
+    $script:stats.github = [bool]$c.popupGitHub; $script:stats.inbox = $script:inboxDir
     $soon = [int](Clamp $c.calendarMinutes 1 120) * 60000
     foreach ($ev in @($script:stats.meetings)) {
         if (-not $ev) { continue }
@@ -1798,6 +1802,24 @@ function Poll-Events($now) {
             Show-Popup 'meeting' 0xE787 $ev.title ('Starts in {0} min' -f [math]::Max(1, [math]::Round($left / 60000))) '#FFB340' 10
             Play-Chime 'needs'
         }
+    }
+    # notices sent with notch.cmd / scripts\notch.ps1 (builds, tests, your own scripts)
+    if ($now - $script:inboxAt -gt 400) {
+        $script:inboxAt = $now
+        try {
+            foreach ($f in [IO.Directory]::GetFiles($script:inboxDir, '*.json')) {
+                try { $n = [IO.File]::ReadAllText($f) | ConvertFrom-Json } catch { $n = $null }
+                Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+                if (-not $n) { continue }
+                switch ([string]$n.kind) {
+                    'success' { Show-Popup 'notch' 0xE73E ([string]$n.title) ([string]$n.text) '#34C759' 6; Mascot-Hop 'celebrate' }
+                    'fail'    { Show-Popup 'notch' 0xE711 ([string]$n.title) ([string]$n.text) '#FF453A' 8; Play-Chime 'needs' }
+                    'timer'   { Start-Timer ([double]$n.minutes) ([string]$n.title) }
+                    'github'  { Show-Popup 'github' 0xE8A7 ([string]$n.title) ([string]$n.text) $(if ($n.ok) { '#34C759' } else { '#FF453A' }) 8 $null '' $null ([string]$n.url) }
+                    default   { Show-Popup 'notch' 0xE946 ([string]$n.title) ([string]$n.text) '#FFFFFF' 5 }
+                }
+            }
+        } catch { }
     }
     # queued from the background threads
     while ($script:events.Count) {
@@ -2010,7 +2032,7 @@ $script:stats = [hashtable]::Synchronized(@{ on = $true; want = [bool]$script:cf
 $statsPs = [PowerShell]::Create()
 [void]$statsPs.AddScript({
     param($st)
-    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true; $icsUrlWas = $null
+    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true; $icsUrlWas = $null; $gh = $null; $ghPrev = $null
     $smi = $null; try { $smi = (Get-Command nvidia-smi.exe -ErrorAction Stop).Source } catch { }
     while ($st.on) {
         try {
@@ -2087,6 +2109,38 @@ $statsPs = [PowerShell]::Create()
                 $st.meetings = $list
             } catch { }
         } elseif (-not $url) { $st.meetings = @() }
+        # GitHub: your open pull requests' checks and reviews, every 2 minutes (needs the gh CLI, signed in)
+        if ($st.github -and $tick % 60 -eq 5) {
+            if (-not $gh) { try { $gh = (Get-Command gh.exe -ErrorAction Stop).Source } catch { } }
+            if ($gh) {
+                try {
+                    $query = 'query{viewer{pullRequests(states:OPEN,last:20){nodes{number title url repository{nameWithOwner} reviewDecision commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}'
+                    $res = (& $gh api graphql -f "query=$query" 2>$null) -join "`n" | ConvertFrom-Json
+                    $cur = @{}
+                    foreach ($pr in @($res.data.viewer.pullRequests.nodes)) {
+                        $ci = [string]$pr.commits.nodes[0].commit.statusCheckRollup.state
+                        $cur[[string]$pr.url] = @{ ci = $ci; review = [string]$pr.reviewDecision; name = "$($pr.repository.nameWithOwner)#$($pr.number) $($pr.title)" }
+                    }
+                    if ($ghPrev) {
+                        foreach ($k in $cur.Keys) {
+                            $a = $cur[$k]; $b = $ghPrev[$k]
+                            if (-not $b) { continue }
+                            $msg = $null
+                            if ($a.ci -ne $b.ci -and $a.ci -eq 'SUCCESS') { $msg = @{ title = 'Checks passed'; ok = $true } }
+                            elseif ($a.ci -ne $b.ci -and @('FAILURE', 'ERROR') -contains $a.ci) { $msg = @{ title = 'Checks failed'; ok = $false } }
+                            elseif ($a.review -ne $b.review -and $a.review -eq 'APPROVED') { $msg = @{ title = 'PR approved'; ok = $true } }
+                            elseif ($a.review -ne $b.review -and $a.review -eq 'CHANGES_REQUESTED') { $msg = @{ title = 'Changes requested'; ok = $false } }
+                            if ($msg) {
+                                $msg.kind = 'github'; $msg.text = $a.name; $msg.url = $k
+                                $id = [guid]::NewGuid().ToString('N')
+                                [IO.File]::WriteAllText((Join-Path $st.inbox "$id.json"), ($msg | ConvertTo-Json -Compress))
+                            }
+                        }
+                    }
+                    $ghPrev = $cur
+                } catch { }
+            }
+        }
         # screen brightness (laptop screens; external monitors don't report it to Windows)
         if ($brightOK) {
             try {
@@ -2469,7 +2523,7 @@ foreach ($pair in @(@('Show popups', 'popups'), @('Devices', 'popupDevices'), @(
     [void]$miPopups.DropDownItems.Add((New-Toggle $pair[0] $pair[1]))
 }
 $miPopups.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
-foreach ($pair in @(@('Downloads', 'popupDownloads'), @('Clipboard', 'popupClipboard'), @('Do Not Disturb', 'popupFocus'))) {
+foreach ($pair in @(@('Downloads', 'popupDownloads'), @('Clipboard', 'popupClipboard'), @('Do Not Disturb', 'popupFocus'), @('GitHub pull requests', 'popupGitHub'))) {
     [void]$miPopups.DropDownItems.Add((New-Toggle $pair[0] $pair[1]))
 }
 [void]$menu.Items.Add($miPopups)

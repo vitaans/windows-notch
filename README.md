@@ -39,6 +39,16 @@ new file has no errors), a new hook script is used on Claude's next step, and
 | `data\agent-prices.json` | Model prices for the API-value estimate |
 | `state\` | Running state and `island.log` (safe to delete) |
 
+## Notices from your own scripts
+
+`notch.cmd` (in the island folder; add the folder to PATH to use it anywhere) puts a notice in the island:
+
+```
+notch "Deploy finished"
+notch "Tests failed" -Kind fail -Text "3 of 120"
+notch run npm test        runs it, then shows Passed or Failed (exit code) and how long it took
+notch timer 25            starts a 25 minute timer
+```
 ## Timer
 
 Tray menu → **Timer**: 5 / 10 / 15 / 30 minutes, or a Pomodoro (focus, then a break). It counts down in the island with a ring, and in the fullscreen notch.
@@ -121,6 +131,7 @@ Options added by future updates are filled in automatically.
 | `calendarMinutes` | `5` | How many minutes before a meeting to remind you |
 | `timerMinutes` | `25` | Pomodoro focus length (tray menu → Timer) |
 | `breakMinutes` | `5` | Pomodoro break length |
+| `popupGitHub` | `true` | Your open pull requests: checks passed / failed, approved, changes requested. Needs the [GitHub CLI](https://cli.github.com) installed and signed in (`gh auth login`) |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
 | `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
 | `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |

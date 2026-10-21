@@ -47,6 +47,7 @@
     "popupDownloads":  true,
     "popupClipboard":  true,
     "popupFocus":  true,
+    "popupGitHub":  true,
     "calendarIcsUrl":  "",
     "calendarMinutes":  5,
     "timerMinutes":  25,
