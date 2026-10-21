@@ -78,6 +78,9 @@ $script:cfg = [ordered]@{
     clickThrough       = $true      # clicks go through the pill to what's under it; hold Ctrl to hover/click the pill
     peekOpacity        = 0.25       # with click-through on, the pill fades to this while the cursor is over it (1 = no fade)
     fullscreenNotch    = $true      # while a fullscreen app is in front, swap the pill for a slim notch at the top edge
+    expandedWidth      = 360        # size of the expanded island, so its buttons are always in the same place
+    expandedHeight     = 250
+    expandedOpacity    = 0.92       # background darkness while expanded (0 to 1), so text stays readable
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
     mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
@@ -308,7 +311,7 @@ try {
       <Rectangle x:Name="Tint" RadiusX="23" RadiusY="23" Fill="#8C0B0B0D"/>
       <Grid x:Name="SizeHost" ClipToBounds="True">
       <StackPanel x:Name="Inner" Margin="10,8,14,8" HorizontalAlignment="Stretch" VerticalAlignment="Top">
-        <DockPanel LastChildFill="True">
+        <DockPanel LastChildFill="True" MinHeight="34">
 
           <!-- Mascot (right end) -->
           <Grid x:Name="Mascot" DockPanel.Dock="Right" Margin="12,0,2,0" VerticalAlignment="Center" Background="Transparent">
@@ -395,6 +398,21 @@ try {
           </Grid>
         </DockPanel>
 
+        <!-- Panel buttons, shown while expanded: music on the left, stats on the right. Right under the
+             header, so they are always in the same place whichever panel is open -->
+        <Grid x:Name="Tools" Visibility="Collapsed" Margin="2,10,2,0">
+          <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
+            <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  HorizontalAlignment="Right" Cursor="Hand" ToolTip="System stats">
+            <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+        </Grid>
+
         <!-- Claude sessions (hover) -->
         <StackPanel x:Name="Details" Visibility="Collapsed">
           <StackPanel Margin="4,10,0,2">
@@ -457,19 +475,6 @@ try {
           </StackPanel>
         </StackPanel>
 
-        <!-- Panel buttons, shown while expanded: music on the left, stats on the right -->
-        <Grid x:Name="Tools" Visibility="Collapsed" Margin="2,10,2,0">
-          <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                  HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
-            <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-          <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                  HorizontalAlignment="Right" Cursor="Hand" ToolTip="System stats">
-            <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-        </Grid>
       </StackPanel>
       </Grid>
       </Grid>
@@ -608,6 +613,9 @@ function Apply-Appearance {
         $a = [byte][math]::Round(255 * (Clamp $script:cfg.backgroundOpacity 0 1))
         $script:tintColor  = [System.Windows.Media.Color]::FromArgb($a, $c.R, $c.G, $c.B)
         $script:solidColor = [System.Windows.Media.Color]::FromArgb(255, $c.R, $c.G, $c.B)
+        $da = [byte][math]::Round(255 * [math]::Max((Clamp $script:cfg.expandedOpacity 0 1), (Clamp $script:cfg.backgroundOpacity 0 1)))
+        $script:darkColor  = [System.Windows.Media.Color]::FromArgb($da, $c.R, $c.G, $c.B)
+        $script:dark = $false
         $uiTint.Fill = New-Object System.Windows.Media.SolidColorBrush $script:tintColor
         $bc = [System.Windows.Media.Color]::FromArgb([byte][math]::Round(255 * (Clamp $script:cfg.borderOpacity 0 1)), 255, 255, 255)
         $uiPill.BorderBrush = New-Object System.Windows.Media.SolidColorBrush $bc
@@ -988,8 +996,20 @@ function Solid-Pulse([int]$fade, [int]$ms) {
     [void]$k.KeyFrames.Add((New-Object System.Windows.Media.Animation.DiscreteColorKeyFrame($b.Color, $KT::FromPercent(0))))
     [void]$k.KeyFrames.Add((New-Object System.Windows.Media.Animation.LinearColorKeyFrame($script:solidColor, $KT::FromPercent($fade / $total))))
     [void]$k.KeyFrames.Add((New-Object System.Windows.Media.Animation.LinearColorKeyFrame($script:solidColor, $KT::FromPercent(($fade + $ms) / $total))))
-    [void]$k.KeyFrames.Add((New-Object System.Windows.Media.Animation.LinearColorKeyFrame($script:tintColor, $KT::FromPercent(1))))
+    [void]$k.KeyFrames.Add((New-Object System.Windows.Media.Animation.LinearColorKeyFrame((Get-TintTarget), $KT::FromPercent(1))))
     $b.BeginAnimation([System.Windows.Media.SolidColorBrush]::ColorProperty, $k)
+}
+# Expanded, the background turns darker so the text reads well over anything behind it
+$script:dark = $false
+function Get-TintTarget { if ($script:dark) { $script:darkColor } else { $script:tintColor } }
+function Set-Dark([bool]$on) {
+    if ($on -eq $script:dark -or -not $script:darkColor) { return }
+    $script:dark = $on
+    $b = $uiTint.Fill
+    if (-not ($b -is [System.Windows.Media.SolidColorBrush])) { return }
+    if ($b.IsFrozen) { $b = $b.Clone(); $uiTint.Fill = $b }
+    $a = New-Object System.Windows.Media.Animation.ColorAnimation((Get-TintTarget), (Dur 200))
+    $b.BeginAnimation([System.Windows.Media.SolidColorBrush]::ColorProperty, $a)
 }
 # Hover panels: shown/hidden here with a fade; the pill's own size animation (Sync-Size)
 # does the widening and growing, so nothing ever pops.
@@ -1030,6 +1050,11 @@ function Sync-Size {
     $d = $uiInner.DesiredSize
     foreach ($c in $closing) { $c.Visibility = 'Visible' }
     $w = [math]::Ceiling([math]::Max(208, $d.Width)); $h = [math]::Ceiling($d.Height)
+    if ($script:hover) {
+        # expanded: one fixed size (grown only if something doesn't fit), so the buttons stay put
+        $w = [math]::Max($w, [math]::Ceiling((Clamp $script:cfg.expandedWidth 208 800)))
+        $h = [math]::Max($h, [math]::Ceiling((Clamp $script:cfg.expandedHeight 0 800)))
+    }
     # (content stretches with the host, so text and companion move with the pill's edges)
     $key = "$w,$h"
     if ($key -eq $script:sizeTarget) { return }
@@ -1112,7 +1137,7 @@ function Hide-Pill {
     $script:shown = $false
     $script:hover = $false
     foreach ($p in $uiDetails, $uiMusicDetails, $uiStatsPanel, $uiTools) { $p.Visibility = 'Collapsed'; $p.Tag = '' }
-    $script:panel = ''
+    $script:panel = ''; Set-Dark $false
     $uiPill.IsHitTestVisible = $false
     $ease = New-Object System.Windows.Media.Animation.CubicEase
     $ease.EasingMode = 'EaseIn'
@@ -1428,6 +1453,7 @@ function Get-WantPanel($view) {
 }
 function Update-Panels($view, $sessions, $now) {
     if (-not $script:hover) { $script:panel = '' }
+    Set-Dark $script:hover
     $want = Get-WantPanel $view
     if ($script:hover -and $want -eq 'sessions') { Render-Details $sessions $now } else { Shrink-Out $uiDetails }
     if ($script:hover -and $want -eq 'music') { Fill-MusicPanel $view $now; Grow-In $uiMusicDetails } else { Shrink-Out $uiMusicDetails }

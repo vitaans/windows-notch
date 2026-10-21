@@ -97,6 +97,9 @@ Options added by future updates are filled in automatically.
 | `clickThrough` | `true` | Clicks go through the pill to whatever is under it. Ctrl+click it once and it stays clickable until it collapses again |
 | `peekOpacity` | `0.25` | With click-through on, the pill fades to this while the cursor is over it (1 = no fade) |
 | `fullscreenNotch` | `true` | While a fullscreen app is in front, show a slim notch at the top edge instead of the pill |
+| `expandedWidth` | `360` | Width of the expanded island. It keeps one size so the buttons are always in the same place |
+| `expandedHeight` | `250` | Height of the expanded island (it only grows if something doesn't fit) |
+| `expandedOpacity` | `0.92` | How dark the background gets while expanded, so text stays readable |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
 | `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
 | `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |
@@ -104,7 +107,7 @@ Options added by future updates are filled in automatically.
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
 
 **Expanded island**: hover it (Ctrl+click first when click-through is on) to expand it. The round
-button on the left opens music and volume controls (click or drag the bar, scroll to adjust, the
+buttons under the header stay in the same place: the left one opens music and volume controls (click or drag the bar, scroll to adjust, the
 speaker mutes); the one on the right opens system stats. Click a button again to close its panel.
 
 **System stats**: CPU and GPU load, RAM use and network speed work out of the box.
