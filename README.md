@@ -100,6 +100,16 @@ Options added by future updates are filled in automatically.
 | `expandedWidth` | `400` | Width of the expanded island. It keeps one size so the buttons are always in the same place |
 | `expandedHeight` | `0` | Height of the expanded island. `0` = just tall enough for its tallest panel, so it never resizes when you switch panels |
 | `expandedOpacity` | `0.92` | How dark the background gets while expanded, so text stays readable |
+| `fullscreenClock` | `true` | In fullscreen, the notch shows the time when nothing else is going on |
+| `popups` | `true` | Short notices in the island (and the fullscreen notch). Turn single kinds off below or in the tray menu → Popups |
+| `popupSeconds` | `3` | How long a notice stays |
+| `popupDevices` | `true` | Headphones, mouse, keyboard, USB drive, phone or camera connected / removed |
+| `popupVolume` | `true` | Volume (and laptop screen brightness) changed: a slim bar |
+| `popupAudioOutput` | `true` | Sound output switched, with the device name |
+| `popupLocks` | `true` | Caps Lock / Num Lock on or off |
+| `popupBattery` | `true` | Charger plugged in or out, battery at 20 / 10 / 5% (laptops) |
+| `popupNetwork` | `true` | Wi-Fi (with its name) or Ethernet connected / lost, VPN on / off |
+| `popupScreenshots` | `true` | A screenshot was saved to Pictures\Screenshots: a preview, click it to open |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
 | `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
 | `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |

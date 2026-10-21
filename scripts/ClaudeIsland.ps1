@@ -81,6 +81,16 @@ $script:cfg = [ordered]@{
     expandedWidth      = 400        # size of the expanded island, so its buttons are always in the same place
     expandedHeight     = 0          # 0 = just tall enough for the tallest panel; set a number to make it taller
     expandedOpacity    = 0.92       # background darkness while expanded (0 to 1), so text stays readable
+    fullscreenClock    = $true      # in fullscreen, the notch shows the time when nothing else is going on
+    popups             = $true      # short notices in the island (and the fullscreen notch); each kind below can be turned off
+    popupSeconds       = 3          # how long a notice stays
+    popupDevices       = $true      # a device (headphones, mouse, keyboard, USB drive, camera) connected or removed
+    popupVolume        = $true      # volume or brightness changed: a slim bar
+    popupAudioOutput   = $true      # sound output switched (speakers, headphones, ...)
+    popupLocks         = $true      # Caps Lock / Num Lock
+    popupBattery       = $true      # charger plugged in or out, battery low (laptops)
+    popupNetwork       = $true      # Wi-Fi / Ethernet connected or lost, VPN on or off
+    popupScreenshots   = $true      # a screenshot was saved: a small preview, click it to open
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
     mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
@@ -147,17 +157,48 @@ interface IIslandEndpointVolume {
     int SetMute([MarshalAs(UnmanagedType.Bool)] bool m, ref Guid ctx); int GetMute([MarshalAs(UnmanagedType.Bool)] out bool m);
 }
 [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IIslandMMDevice { int Activate(ref Guid iid, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o); }
+interface IIslandMMDevice {
+    int Activate(ref Guid iid, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o);
+    int OpenPropertyStore(int access, out IIslandPropertyStore ps);
+    int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
+    int GetState(out int state);
+}
+[StructLayout(LayoutKind.Sequential)] struct IslandPKey { public Guid fmtid; public int pid; }
+[StructLayout(LayoutKind.Explicit)] struct IslandPropVar { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr p; [FieldOffset(16)] public IntPtr p2; }
+[ComImport, Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IIslandPropertyStore {
+    int GetCount(out int c); int GetAt(int i, out IslandPKey k);
+    int GetValue(ref IslandPKey k, out IslandPropVar v); int SetValue(ref IslandPKey k, ref IslandPropVar v); int Commit();
+}
 [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IIslandMMDeviceEnumerator { int EnumAudioEndpoints(int flow, int mask, out IntPtr devs); int GetDefaultAudioEndpoint(int flow, int role, out IIslandMMDevice d); }
 [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class IslandMMDeviceEnumerator { }
 public static class IslandAudio {
-    static IIslandEndpointVolume Endpoint() {
-        var en = (IIslandMMDeviceEnumerator)new IslandMMDeviceEnumerator();
+    // The enumerator and the speakers' volume control are kept, and only re-made when the
+    // default output changes, so polling the volume a few times a second stays cheap.
+    static IIslandMMDeviceEnumerator en; static IIslandEndpointVolume ep; static string epId;
+    static IIslandMMDevice Default() {
+        if (en == null) en = (IIslandMMDeviceEnumerator)new IslandMMDeviceEnumerator();
         IIslandMMDevice d; Marshal.ThrowExceptionForHR(en.GetDefaultAudioEndpoint(0, 1, out d));
-        Guid iid = typeof(IIslandEndpointVolume).GUID; object o;
-        Marshal.ThrowExceptionForHR(d.Activate(ref iid, 23, IntPtr.Zero, out o));
-        return (IIslandEndpointVolume)o;
+        return d;
+    }
+    static IIslandEndpointVolume Endpoint() {
+        var d = Default(); string id; d.GetId(out id);
+        if (ep == null || id != epId) {
+            Guid iid = typeof(IIslandEndpointVolume).GUID; object o;
+            Marshal.ThrowExceptionForHR(d.Activate(ref iid, 23, IntPtr.Zero, out o));
+            ep = (IIslandEndpointVolume)o; epId = id;
+        }
+        return ep;
+    }
+    public static string DefaultId() { string id; Default().GetId(out id); return id; }
+    public static string DefaultName() {
+        IIslandPropertyStore ps;
+        if (Default().OpenPropertyStore(0, out ps) != 0) return null;
+        var k = new IslandPKey { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 14 };   // friendly name
+        IslandPropVar v;
+        if (ps.GetValue(ref k, out v) != 0 || v.vt != 31) return null;
+        return Marshal.PtrToStringUni(v.p);
     }
     public static float GetVolume() { float v; Endpoint().GetMasterVolumeLevelScalar(out v); return v; }
     public static void SetVolume(float v) { Guid g = Guid.Empty; Endpoint().SetMasterVolumeLevelScalar(Math.Max(0f, Math.Min(1f, v)), ref g); }
@@ -240,15 +281,25 @@ public static class IslandNative {
         if (h == IntPtr.Zero || h == self1 || h == self2 || !IsWindowVisible(h)) return null;
         var cls = new System.Text.StringBuilder(64); GetClassName(h, cls, 64);
         switch (cls.ToString()) { case "Progman": case "WorkerW": case "Shell_TrayWnd": case "Shell_SecondaryTrayWnd": return null; }
-        bool caption = (GetWindowLong(h, -16) & 0x00C00000) == 0x00C00000;
-        if (IsZoomed(h) && caption) return null;
         RECT r; if (!GetWindowRect(h, out r)) return null;
         var mi = new MONITORINFO(); mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
         if (!GetMonitorInfo(MonitorFromWindow(h, 2), ref mi)) return null;
         var m = mi.rcMonitor;
-        if (r.L <= m.L && r.T <= m.T && r.R >= m.R && r.B >= m.B) return new[] { m.L, m.T, m.R, m.B };
+        if (!(r.L <= m.L && r.T <= m.T && r.R >= m.R && r.B >= m.B)) return null;
+        // Covering the monitor exactly is fullscreen (browsers' F11 and videos keep their title-bar
+        // style, so that alone can't decide). Larger than the monitor is a maximized window's
+        // invisible frame: only fullscreen if it has no title bar, or Windows says an app is fullscreen.
+        bool exact = r.L == m.L && r.T == m.T && r.R == m.R && r.B == m.B;
+        bool caption = (GetWindowLong(h, -16) & 0x00C00000) == 0x00C00000;
+        int quns = 0; try { SHQueryUserNotificationState(out quns); } catch { }
+        bool busy = quns == 2 || quns == 3 || quns == 4;   // busy / D3D fullscreen / presentation
+        if (exact || !caption || !IsZoomed(h) || busy) return new[] { m.L, m.T, m.R, m.B };
         return null;
     }
+    [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
+    // Keep a window above everything, fullscreen apps included, without activating it
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    public static void ForceTopmost(IntPtr h) { SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0200); }
 
     // Album art: turn the WinRT stream Windows gives us into a classic COM IStream and read it all.
     [DllImport("shcore.dll")] static extern int CreateStreamOverRandomAccessStream(
@@ -376,6 +427,30 @@ try {
             <!-- System stats row (filled in by Render-Stats) -->
             <StackPanel x:Name="StatsRow" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,5,0,5" Visibility="Collapsed"/>
 
+            <!-- Popup row: short notices (device, volume, screenshot, ...) -->
+            <StackPanel x:Name="PopupRow" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+              <Grid Width="28" Height="28" VerticalAlignment="Center">
+                <Ellipse x:Name="PopDot" Width="26" Height="26" Fill="#33FFFFFF"/>
+                <TextBlock x:Name="PopGlyph" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Foreground="#FFFFFFFF"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Grid>
+              <Border x:Name="PopThumb" Width="50" Height="30" CornerRadius="5" Margin="8,0,0,0" ClipToBounds="True" Visibility="Collapsed">
+                <Border.Background><ImageBrush x:Name="PopImg" Stretch="UniformToFill"/></Border.Background>
+              </Border>
+              <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                <TextBlock x:Name="PopTitle" Foreground="#FFFFFFFF" FontFamily="Segoe UI Variable Display, Segoe UI"
+                           FontSize="13.5" FontWeight="SemiBold" MaxWidth="280" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="PopSub" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
+                           FontSize="11.5" Margin="0,1,0,0" MaxWidth="280" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+              <Grid x:Name="PopBarGrid" Width="140" Height="4" Margin="14,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                <Border Background="#26FFFFFF" CornerRadius="2"/>
+                <Border x:Name="PopBarFill" Background="#FFFFFFFF" CornerRadius="2" HorizontalAlignment="Left" Width="0"/>
+              </Grid>
+              <TextBlock x:Name="PopValue" Foreground="#CCFFFFFF" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                         Margin="12,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+
             <!-- Now playing row -->
             <StackPanel x:Name="MusicRow" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
               <Border x:Name="Art" Width="30" Height="30" CornerRadius="8" Background="#2C2C30" VerticalAlignment="Center">
@@ -499,7 +574,8 @@ foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText'
                'ProgGrid','ProgTrack','ProgFill','TimeGrid','PosText','DurText','BtnPrev','BtnPlay','BtnNext','PlayGlyph',
                'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
                'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
-               'StatsPanel','StatLines','Tools','ToolsSpace','BtnMusicPanel','BtnStatsPanel') {
+               'StatsPanel','StatLines','Tools','ToolsSpace',
+               'PopupRow','PopDot','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -660,17 +736,26 @@ $win.Add_SourceInitialized({
   <Border x:Name="NBar" Background="#000000" CornerRadius="0,0,11,11" Height="28" MinWidth="150" Padding="11,0,13,0"
           VerticalAlignment="Top">
     <DockPanel LastChildFill="False">
-      <Path x:Name="NIcon" DockPanel.Dock="Left" Width="13" Height="13" VerticalAlignment="Center" Stretch="Uniform"
-            Data="M6.5,0 L6.5,13 M0,6.5 L13,6.5 M1.9,1.9 L11.1,11.1 M11.1,1.9 L1.9,11.1"
-            Stroke="#D97857" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+      <Grid DockPanel.Dock="Left" Width="14" Height="14" VerticalAlignment="Center">
+        <Path x:Name="NIcon" Width="13" Height="13" Stretch="Uniform"
+              Data="M6.5,0 L6.5,13 M0,6.5 L13,6.5 M1.9,1.9 L11.1,11.1 M11.1,1.9 L1.9,11.1"
+              Stroke="#D97857" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+        <TextBlock x:Name="NGlyph" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12" Visibility="Collapsed"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Grid>
       <TextBlock x:Name="NText" DockPanel.Dock="Right" Margin="24,0,0,0" VerticalAlignment="Center"
                  Foreground="#D97857" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="13" FontWeight="SemiBold"/>
+      <Grid x:Name="NBarGrid" DockPanel.Dock="Right" Width="70" Height="4" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+        <Border Background="#33FFFFFF" CornerRadius="2"/>
+        <Border x:Name="NBarFill" Background="#FFFFFFFF" CornerRadius="2" HorizontalAlignment="Left" Width="0"/>
+      </Grid>
     </DockPanel>
   </Border>
 </Window>
 "@
 $nwin  = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $notchXaml))
-$uiNIcon = $nwin.FindName('NIcon'); $uiNText = $nwin.FindName('NText')
+$uiNIcon = $nwin.FindName('NIcon'); $uiNText = $nwin.FindName('NText'); $uiNGlyph = $nwin.FindName('NGlyph')
+$uiNBarGrid = $nwin.FindName('NBarGrid'); $uiNBarFill = $nwin.FindName('NBarFill')
 $script:notchHwnd = [IntPtr]::Zero
 $script:notchOn = $false; $script:notchMon = $null; $script:notchMode = ''
 $nwin.Add_SourceInitialized({
@@ -693,18 +778,21 @@ function Get-Fullscreen {
     if (-not $script:cfg.fullscreenNotch) { return $null }
     try { [IslandNative]::FullscreenRect($script:mainHwnd, $script:notchHwnd) } catch { $null }
 }
-function Show-Notch($mode, $pick, $now, $mon) {
-    switch ($mode) {
-        'working' { $c = $script:cfg.accent;     $t = Format-Elapsed ($now - [int64]$pick.started) }
-        'needs'   { $c = $script:cfg.needsColor; $t = 'Needs you' }
-        'done'    { $c = $script:cfg.doneColor;  $t = Format-Elapsed ([int64]$pick.finished - [int64]$pick.started) }
+# What the notch shows: Claude's icon (or a popup's glyph), a text, and optionally a slim bar
+function Set-NotchContent($color, [string]$text, $glyph = $null, [bool]$pulse = $false, $bar = $null) {
+    $b = New-Brush ([string]$color)
+    $uiNText.Foreground = $b; $uiNText.Text = $text
+    if ($glyph) { $uiNGlyph.Text = [string]$glyph; $uiNGlyph.Foreground = $b; $uiNGlyph.Visibility = 'Visible'; $uiNIcon.Visibility = 'Collapsed' }
+    else { $uiNIcon.Stroke = $b; $uiNIcon.Visibility = 'Visible'; $uiNGlyph.Visibility = 'Collapsed' }
+    if ($null -ne $bar) { $uiNBarGrid.Visibility = 'Visible'; $uiNBarFill.Width = 70 * (Clamp $bar 0 1); $uiNBarFill.Background = $b }
+    else { $uiNBarGrid.Visibility = 'Collapsed' }
+    $key = "$pulse|$glyph"
+    if ($key -ne $script:notchMode) {
+        $script:notchMode = $key
+        if ($pulse) { Loop $uiNIcon $OpacityProp 1 0.35 900 $true (Sine) } else { Stop-Anim $uiNIcon $OpacityProp; $uiNIcon.Opacity = 1 }
     }
-    $b = New-Brush ([string]$c)
-    $uiNIcon.Stroke = $b; $uiNText.Foreground = $b; $uiNText.Text = $t
-    if ($mode -ne $script:notchMode) {
-        $script:notchMode = $mode
-        if ($mode -eq 'working') { Loop $uiNIcon $OpacityProp 1 0.35 900 $true (Sine) } else { Stop-Anim $uiNIcon $OpacityProp; $uiNIcon.Opacity = 1 }
-    }
+}
+function Show-NotchAt($mon) {
     $script:notchMon = $mon
     if (-not $script:notchOn) {
         $script:notchOn = $true
@@ -712,7 +800,16 @@ function Show-Notch($mode, $pick, $now, $mon) {
         Animate $nwin $OpacityProp 1 150
     }
     Place-Notch
-    $nwin.Topmost = $false; $nwin.Topmost = $true
+    # fullscreen apps (and video players) can put themselves on top; stay above them
+    if ($script:notchHwnd -ne [IntPtr]::Zero) { [IslandNative]::ForceTopmost($script:notchHwnd) }
+}
+function Show-Notch($mode, $pick, $now, $mon) {
+    switch ($mode) {
+        'working' { Set-NotchContent $script:cfg.accent (Format-Elapsed ($now - [int64]$pick.started)) $null $true }
+        'needs'   { Set-NotchContent $script:cfg.needsColor 'Needs you' }
+        'done'    { Set-NotchContent $script:cfg.doneColor (Format-Elapsed ([int64]$pick.finished - [int64]$pick.started)) }
+    }
+    Show-NotchAt $mon
 }
 function Hide-Notch {
     if (-not $script:notchOn) { return }
@@ -900,7 +997,7 @@ function Start-Eq {
 }
 
 function Set-Look($mode) {
-    $key = "$mode|$($script:artColor)"
+    $key = "$mode|$($script:artColor)|$($script:popColor)"
     if ($script:look -eq $key) { return }
     $script:look = $key
     Stop-Anim $uiRing $OpacityProp; Stop-Anim $ringSc $ScaleXProp; Stop-Anim $ringSc $ScaleYProp; Stop-Anim $glow $GlowOpProp
@@ -948,6 +1045,10 @@ function Set-Look($mode) {
         }
         'stats' {
             $glow.Color = New-Color '#8E8E93'; $glow.Opacity = 0.2 * $script:glowK
+            Mascot-Mood 'normal'
+        }
+        'popup' {
+            $glow.Color = New-Color $script:popColor; $glow.Opacity = 0.45 * $script:glowK
             Mascot-Mood 'normal'
         }
     }
@@ -1445,7 +1546,7 @@ foreach ($pair in @(@($uiBtnPrev, 'prev'), @($uiBtnPlay, 'toggle'), @($uiBtnNext
 }
 
 function Show-Music($m, $now) {
-    $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Visible'; $uiStatsRow.Visibility = 'Collapsed'; $uiDetails.Visibility = 'Collapsed'; $uiDetails.Tag = ''
+    $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Visible'; $uiStatsRow.Visibility = 'Collapsed'; $uiPopupRow.Visibility = 'Collapsed'; $uiDetails.Visibility = 'Collapsed'; $uiDetails.Tag = ''
     Set-Look $(if ($m.playing) { 'music' } else { 'musicpaused' })
     Set-Text $uiMTitle ([string]$m.title)
     Set-Text $uiMArtist ([string]$(if ($m.artist) { $m.artist } else { $m.appName }))
@@ -1458,6 +1559,180 @@ function Show-Music($m, $now) {
     $script:lastKey = $key
     Show-Pill
 }
+
+# ---- popups ---------------------------------------------------------------
+# Short notices (a device connected, the volume changed, a screenshot was saved, ...) that take
+# over the pill, or the fullscreen notch, for a few seconds. The newest wins; one with the same
+# key (like the volume bar) updates in place. They wait while the island is expanded.
+$script:popup = $null; $script:popColor = '#FFFFFF'
+$script:events = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
+function Show-Popup([string]$key, $glyph, [string]$title, [string]$sub = '', [string]$color = '#FFFFFF',
+                    [double]$seconds = 0, $bar = $null, [string]$value = '', $image = $null, $open = $null) {
+    if (-not $script:cfg.popups) { return }
+    if ($seconds -le 0) { $seconds = Clamp $script:cfg.popupSeconds 1 30 }
+    $now = Get-Now
+    $same = $script:popup -and $script:popup.key -eq $key
+    $script:popup = @{ key = $key; glyph = [string]$(if ($glyph -is [int]) { [char]$glyph } else { $glyph }); title = $title; sub = $sub
+                       color = $color; until = $now + [int]($seconds * 1000); bar = $bar; value = $value; image = $image; open = $open
+                       at = $(if ($same) { $script:popup.at } else { $now }) }
+    if (-not $same -and @('volume', 'brightness') -notcontains $key) { Mascot-Hop 'perk' }
+}
+function Get-Popup($now) {
+    $p = $script:popup
+    if ($p -and $now -lt $p.until) { return $p }
+    $script:popup = $null; $null
+}
+function Show-PopupView($p, $now) {
+    $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Collapsed'; $uiPopupRow.Visibility = 'Visible'
+    $script:popColor = [string]$p.color
+    Set-Look 'popup'
+    $c = New-Color ([string]$p.color)
+    $uiPopDot.Fill = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(56, $c.R, $c.G, $c.B))
+    $uiPopGlyph.Text = $p.glyph; $uiPopGlyph.Foreground = New-Brush ([string]$p.color)
+    $uiPopDot.Parent.Visibility = if ($p.image) { 'Collapsed' } else { 'Visible' }
+    if ($p.image) { $uiPopImg.ImageSource = $p.image; $uiPopThumb.Visibility = 'Visible' } else { $uiPopThumb.Visibility = 'Collapsed' }
+    $uiPopTitle.Text = $p.title
+    $uiPopSub.Text = $p.sub; $uiPopSub.Visibility = if ($p.sub) { 'Visible' } else { 'Collapsed' }
+    if ($null -ne $p.bar) { $uiPopBarGrid.Visibility = 'Visible'; $uiPopBarFill.Width = 140 * (Clamp $p.bar 0 1) } else { $uiPopBarGrid.Visibility = 'Collapsed' }
+    $uiPopValue.Text = $p.value; $uiPopValue.Visibility = if ($p.value) { 'Visible' } else { 'Collapsed' }
+    Update-Panels 'popup' $null $now
+    $script:dismissKey = ''
+    Set-View 'popup'
+    Sync-Size
+    $key = "popup|$($p.key)|$($p.at)"
+    if ($script:shown -and $key -ne $script:lastKey) { Bump-Pill }
+    $script:lastKey = $key
+    Show-Pill
+}
+function Show-PopupNotch($p, $mon) {
+    $t = [string]$p.title; if ($p.value) { $t = "$t  $($p.value)" } elseif ($p.sub) { $t = "$t  $DOT  $($p.sub)" }
+    if ($t.Length -gt 48) { $t = $t.Substring(0, 47) + $ELL }
+    Set-NotchContent $p.color $t $p.glyph $false $p.bar
+    Show-NotchAt $mon
+}
+
+# Event sources. Cheap checks run here on every refresh (the audio objects are cached);
+# slow ones (devices, network, brightness) run on background threads and queue events.
+$script:ownVolUntil = 0; $script:audioId = $null; $script:volSig = $null
+$script:locks = $null; $script:power = $null; $script:powerAt = 0
+$script:shotDirs = @(@((Join-Path ([Environment]::GetFolderPath('MyPictures')) 'Screenshots'),
+                       (Join-Path $env:USERPROFILE 'Pictures\Screenshots')) | Select-Object -Unique)
+$script:shotStamp = @{}; $script:shotAt = 0
+function Poll-Events($now) {
+    $c = $script:cfg
+    if (-not $c.popups) { return }
+    # sound: output device, volume and mute
+    try {
+        $id = [IslandAudio]::DefaultId()
+        if ($script:audioId -and $id -ne $script:audioId -and $c.popupAudioOutput) {
+            Show-Popup 'audio' 0xE7F5 'Sound output' ([string][IslandAudio]::DefaultName()) '#8AB4FF'
+            $script:volSig = $null
+        }
+        $script:audioId = $id
+        $v = [int][math]::Round([IslandAudio]::GetVolume() * 100); $mu = [IslandAudio]::GetMute()
+        $sig = "$id|$v|$mu"
+        if ($script:volSig -and $sig -ne $script:volSig -and $c.popupVolume -and $now -gt $script:ownVolUntil) {
+            if ($mu) { Show-Popup 'volume' 0xE74F 'Muted' '' '#FFFFFF' 1.6 0 '' }
+            else { Show-Popup 'volume' $(if ($v -eq 0) { 0xE992 } elseif ($v -lt 34) { 0xE993 } elseif ($v -lt 67) { 0xE994 } else { 0xE995 }) 'Volume' '' '#FFFFFF' 1.6 ($v / 100) "$v%" }
+        }
+        $script:volSig = $sig
+    } catch { }
+    # Caps Lock / Num Lock
+    $caps = [System.Windows.Forms.Control]::IsKeyLocked('CapsLock'); $num = [System.Windows.Forms.Control]::IsKeyLocked('NumLock')
+    if ($script:locks -and $c.popupLocks) {
+        if ($caps -ne $script:locks[0]) { Show-Popup 'caps' 0xE765 'Caps Lock' '' '#FFFFFF' 1.5 $null $(if ($caps) { 'ON' } else { 'OFF' }) }
+        if ($num -ne $script:locks[1])  { Show-Popup 'num' 0xE765 'Num Lock' '' '#FFFFFF' 1.5 $null $(if ($num) { 'ON' } else { 'OFF' }) }
+    }
+    $script:locks = @($caps, $num)
+    # battery and charger (laptops; a desktop has no battery and never shows these)
+    if ($now - $script:powerAt -gt 4000) {
+        $script:powerAt = $now
+        try {
+            $ps = [System.Windows.Forms.SystemInformation]::PowerStatus
+            if (-not ([int]$ps.BatteryChargeStatus -band 128)) {
+                $pct = [int][math]::Round($ps.BatteryLifePercent * 100); $plugged = [string]$ps.PowerLineStatus -eq 'Online'
+                $was = $script:power
+                if ($was -and $c.popupBattery) {
+                    if ($plugged -ne $was.plugged) {
+                        if ($plugged) { Show-Popup 'power' 0xE83E 'Charging' '' '#34C759' 0 ($pct / 100) "$pct%" }
+                        else { Show-Popup 'power' 0xE850 'On battery' '' '#FFFFFF' 0 ($pct / 100) "$pct%" }
+                    } elseif (-not $plugged) {
+                        foreach ($lvl in 20, 10, 5) {
+                            if ($pct -le $lvl -and $was.pct -gt $lvl) { Show-Popup 'power' 0xE850 'Battery low' 'Plug in your charger' $(if ($lvl -le 10) { '#FF453A' } else { '#FFB340' }) 6 ($pct / 100) "$pct%"; break }
+                        }
+                    }
+                }
+                $script:power = @{ pct = $pct; plugged = $plugged }
+            }
+        } catch { }
+    }
+    # screenshots: a new image in Pictures\Screenshots (checked once a second, by folder time)
+    if ($c.popupScreenshots -and $now - $script:shotAt -gt 1000) {
+        $script:shotAt = $now
+        foreach ($d in $script:shotDirs) {
+            try {
+                if (-not [IO.Directory]::Exists($d)) { continue }
+                $stamp = [IO.Directory]::GetLastWriteTimeUtc($d)
+                $was = $script:shotStamp[$d]; $script:shotStamp[$d] = $stamp
+                if (-not $was -or $stamp -le $was) { continue }
+                $f = Get-ChildItem -LiteralPath $d -File | Where-Object { $_.Extension -match '^\.(png|jpe?g)$' -and $_.LastWriteTimeUtc -gt $was.AddSeconds(-1) } |
+                     Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+                if (-not $f) { continue }
+                $img = $null
+                try {
+                    $bi = New-Object System.Windows.Media.Imaging.BitmapImage
+                    $bi.BeginInit(); $bi.CacheOption = 'OnLoad'; $bi.DecodePixelWidth = 160; $bi.UriSource = New-Object System.Uri $f.FullName; $bi.EndInit(); $bi.Freeze()
+                    $img = $bi
+                } catch { }
+                Show-Popup 'shot' 0xE722 'Screenshot saved' 'Click to open' '#FFFFFF' 5 $null '' $img $f.FullName
+            } catch { }
+        }
+    }
+    # queued from the background threads
+    while ($script:events.Count) {
+        $e = $script:events.Dequeue()
+        try {
+            switch ($e.kind) {
+                'device' {
+                    if (-not $c.popupDevices) { break }
+                    $names = @($e.names)
+                    $best = @($names | Where-Object { $_ -like 'AudioEndpoint|*' }) + @($names | Where-Object { $_ -notlike 'AudioEndpoint|*' })
+                    $cls, $name = ([string]$best[0]) -split '\|', 2
+                    $glyph = switch ($cls) { 'AudioEndpoint' { 0xE7F6 } 'Mouse' { 0xE962 } 'Keyboard' { 0xE765 } 'DiskDrive' { 0xE88E } 'WPD' { 0xE8EA } { $_ -in 'Camera', 'Image' } { 0xE722 } default { 0xE772 } }
+                    $more = if ($names.Count -gt 1 -and $cls -ne 'AudioEndpoint') { " (+$($names.Count - 1))" } else { '' }
+                    if ($e.on) { Show-Popup 'device' $glyph 'Connected' "$name$more" '#34C759'; Mascot-Hop 'celebrate' }
+                    else { Show-Popup 'device' $glyph 'Disconnected' "$name$more" '#8E8E93' }
+                }
+                'net' { if ($c.popupNetwork) { Show-Popup 'net' $e.glyph $e.title $e.sub $e.color } }
+                'brightness' { if ($c.popupVolume) { Show-Popup 'brightness' 0xE706 'Brightness' '' '#FFFFFF' 1.6 ($e.value / 100) "$($e.value)%" } }
+            }
+        } catch { }
+    }
+}
+
+# Devices: Windows signals any device change (no polling); then the present headphones, mice,
+# keyboards, drives, phones and cameras are compared with the last look to name what changed.
+$devPs = [PowerShell]::Create()
+[void]$devPs.AddScript({
+    param($st, $q)
+    Add-Type -AssemblyName System.Management
+    $filter = "Present = TRUE AND (PNPClass = 'AudioEndpoint' OR PNPClass = 'Mouse' OR PNPClass = 'Keyboard' OR PNPClass = 'DiskDrive' OR PNPClass = 'WPD' OR PNPClass = 'Camera' OR PNPClass = 'Image')"
+    function Snap { $h = @{}; foreach ($d in @(Get-CimInstance Win32_PnPEntity -Filter $filter -ErrorAction SilentlyContinue)) { if ($d.Name) { $h[[string]$d.DeviceID] = "$($d.PNPClass)|$($d.Name)" } }; $h }
+    $prev = Snap
+    $w = New-Object System.Management.ManagementEventWatcher 'SELECT * FROM Win32_DeviceChangeEvent'
+    $w.Options.Timeout = [TimeSpan]::FromSeconds(1)
+    while ($st.on) {
+        try { [void]$w.WaitForNextEvent() } catch { continue }   # timeout: just check $st.on again
+        Start-Sleep -Milliseconds 800                              # one plug-in fires a burst of changes
+        $now = Snap
+        $added = @($now.Keys | Where-Object { -not $prev.ContainsKey($_) } | ForEach-Object { $now[$_] })
+        $removed = @($prev.Keys | Where-Object { -not $now.ContainsKey($_) } | ForEach-Object { $prev[$_] })
+        $prev = $now
+        if ($added.Count) { $q.Enqueue(@{ kind = 'device'; on = $true; names = $added }) }
+        if ($removed.Count) { $q.Enqueue(@{ kind = 'device'; on = $false; names = $removed }) }
+    }
+    $w.Stop(); $w.Dispose()
+})
 
 # ---- expanded panels ------------------------------------------------------
 # While expanded, round buttons open a panel: music and volume (left), system stats (right).
@@ -1535,6 +1810,7 @@ function Update-Volume {
     $uiMuteGlyph.Text = [string][char]$(if ($mute) { 0xE74F } else { 0xE767 })
 }
 function Set-Volume([double]$v) {
+    $script:ownVolUntil = (Get-Now) + 1500   # the panel already shows it; no volume popup
     try { [IslandAudio]::SetVolume([float](Clamp $v 0 1)); if ([IslandAudio]::GetMute()) { [IslandAudio]::SetMute($false) } } catch { }
     Update-Volume
 }
@@ -1553,6 +1829,7 @@ $uiBtnMute.Add_MouseEnter({ $this.Background = New-Brush '#1FFFFFFF' })
 $uiBtnMute.Add_MouseLeave({ $this.Background = New-Brush '#01FFFFFF' })
 $uiBtnMute.Add_MouseLeftButtonUp({
     param($s, $e) $e.Handled = $true
+    $script:ownVolUntil = (Get-Now) + 1500
     try { [IslandAudio]::SetMute(-not [IslandAudio]::GetMute()) } catch { }
     Update-Volume
 })
@@ -1618,15 +1895,15 @@ function Fill-StatsPanel {
 # the "GPU Engine" counters (Task Manager's GPU column). Temperatures need
 # LibreHardwareMonitor (or OpenHardwareMonitor) running; NVIDIA GPU temps also come from
 # nvidia-smi when it's installed. Anything unavailable is simply left out.
-$script:stats = [hashtable]::Synchronized(@{ on = $true; want = [bool]$script:cfg.stats })
+$script:stats = [hashtable]::Synchronized(@{ on = $true; want = [bool]$script:cfg.stats; q = $script:events })
 $statsPs = [PowerShell]::Create()
 [void]$statsPs.AddScript({
     param($st)
-    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null
+    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true
     $smi = $null; try { $smi = (Get-Command nvidia-smi.exe -ErrorAction Stop).Source } catch { }
     while ($st.on) {
-        if (-not $st.want) { Start-Sleep -Milliseconds 500; continue }
         try {
+            if (-not $st.want) { throw 'stats off' }
             $i = 0L; $k = 0L; $u = 0L
             if ([IslandNative]::GetSystemTimes([ref]$i, [ref]$k, [ref]$u)) {
                 if ($prev) {
@@ -1640,10 +1917,32 @@ $statsPs = [PowerShell]::Create()
         } catch { }
         try {
             $rx = 0L; $tx = 0L
+            $wifi = $false; $eth = $false; $vpn = @()
             foreach ($n in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
                 if ($n.OperationalStatus -ne 'Up' -or @('Loopback', 'Tunnel') -contains [string]$n.NetworkInterfaceType) { continue }
                 $s = $n.GetIPStatistics(); $rx += $s.BytesReceived; $tx += $s.BytesSent
+                $d = [string]$n.Description
+                if ($d -match 'VPN|WireGuard|OpenVPN|TAP-Windows|Tailscale|ZeroTier|WARP|NordLynx|Wintun|AnyConnect|FortiClient|GlobalProtect' -or [string]$n.NetworkInterfaceType -eq 'Ppp') { $vpn += [string]$n.Name }
+                elseif ([string]$n.NetworkInterfaceType -eq 'Wireless80211') { $wifi = $true }
+                elseif ([string]$n.NetworkInterfaceType -match 'Ethernet' -and $d -notmatch 'Hyper-V|VirtualBox|VMware|vEthernet|Virtual|Bluetooth') { $eth = $true }
             }
+            # connection changes, for the network popup
+            $now = @{ wifi = $wifi; eth = $eth; vpn = ($vpn | Sort-Object) -join ', ' }
+            if ($conn) {
+                if ($wifi -ne $conn.wifi) {
+                    $ssid = ''
+                    if ($wifi) { try { $ssid = ((netsh wlan show interfaces) -match '^\s+SSID\s+:' | Select-Object -First 1) -replace '^\s+SSID\s+:\s*', '' } catch { } }
+                    $st.q.Enqueue(@{ kind = 'net'; glyph = $(if ($wifi) { 0xE701 } else { 0xEB5E }); title = $(if ($wifi) { 'Wi-Fi connected' } else { 'Wi-Fi disconnected' }); sub = [string]$ssid; color = $(if ($wifi) { '#34C759' } else { '#FFB340' }) })
+                }
+                if ($eth -ne $conn.eth) {
+                    $st.q.Enqueue(@{ kind = 'net'; glyph = 0xE839; title = $(if ($eth) { 'Ethernet connected' } else { 'Ethernet disconnected' }); sub = ''; color = $(if ($eth) { '#34C759' } else { '#FFB340' }) })
+                }
+                if ($now.vpn -ne $conn.vpn) {
+                    $on = [bool]$now.vpn
+                    $st.q.Enqueue(@{ kind = 'net'; glyph = 0xE705; title = $(if ($on) { 'VPN on' } else { 'VPN off' }); sub = $(if ($on) { $now.vpn } else { $conn.vpn }); color = $(if ($on) { '#8AB4FF' } else { '#8E8E93' }) })
+                }
+            }
+            $conn = $now
             $t = [Environment]::TickCount
             if ($netPrev) {
                 $dt = ($t - $netPrev[2]) / 1000.0
@@ -1651,6 +1950,15 @@ $statsPs = [PowerShell]::Create()
             }
             $netPrev = @($rx, $tx, $t)
         } catch { }
+        # screen brightness (laptop screens; external monitors don't report it to Windows)
+        if ($brightOK) {
+            try {
+                $b = [int](@(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightness -ErrorAction Stop)[0].CurrentBrightness)
+                if ($null -ne $bright -and $b -ne $bright) { $st.q.Enqueue(@{ kind = 'brightness'; value = $b }) }
+                $bright = $b
+            } catch { $brightOK = $false }
+        }
+        if (-not $st.want) { $tick++; Start-Sleep -Seconds 2; continue }   # the rest is only for the stats
         try {
             $cat = New-Object System.Diagnostics.PerformanceCounterCategory 'GPU Engine'
             $sum = 0.0; $seen = @{}
@@ -1694,6 +2002,8 @@ $statsPs = [PowerShell]::Create()
     }
 }).AddArgument($script:stats)
 $script:statsJob = $statsPs.BeginInvoke()
+[void]$devPs.AddArgument($script:stats).AddArgument($script:events)
+$script:devJob = $devPs.BeginInvoke()
 
 $script:statKeys = ''; $script:statVals = @{}
 function Format-Rate($b) {
@@ -1731,7 +2041,7 @@ function Render-Stats {
     foreach ($k in $keys) { $script:statVals[$k].Text = Stat-Value $k }
 }
 function Show-Stats {
-    $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Visible'
+    $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Visible'; $uiPopupRow.Visibility = 'Collapsed'
     Set-Look 'stats'
     Render-Stats
     Update-Panels 'stats' $null (Get-Now)
@@ -1787,13 +2097,23 @@ function Update-Island {
         elseif ($done.Count  -gt 0) { $pick = $done[0];  $mode = 'done' }
         elseif ($work.Count  -gt 0 -and $script:cfg.showWorking) { $pick = $work[0]; $mode = 'working' }
 
+        Poll-Events $now
+        $pop = Get-Popup $now
+
         $fs = Get-Fullscreen
         if ($fs) {
             Hide-Pill; $script:lastKey = ''
-            if ($pick) { Show-Notch $mode $pick $now $fs } else { Hide-Notch }
+            if ($mode -eq 'needs') { Show-Notch $mode $pick $now $fs }
+            elseif ($pop) { Show-PopupNotch $pop $fs }
+            elseif ($pick) { Show-Notch $mode $pick $now $fs }
+            elseif ($script:cfg.fullscreenClock) { Set-NotchContent '#E6FFFFFF' ((Get-Date).ToShortTimeString()) ([char]0xE823); Show-NotchAt $fs }
+            else { Hide-Notch }
             return
         }
         Hide-Notch
+
+        # a notice takes over for a few seconds (but never over "needs you", or while expanded)
+        if ($pop -and $mode -ne 'needs' -and -not $script:hover) { Show-PopupView $pop $now; return }
 
         if (-not $pick) {
             $m = $script:music
@@ -1807,7 +2127,7 @@ function Update-Island {
             return
         }
 
-        $uiClaudeRow.Visibility = 'Visible'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Collapsed'
+        $uiClaudeRow.Visibility = 'Visible'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Collapsed'; $uiPopupRow.Visibility = 'Collapsed'
         Set-Look $mode
         $proj = [string]$pick.project
         switch ($mode) {
@@ -1931,6 +2251,11 @@ $uiPill.Add_PreviewMouseLeftButtonDown({ if ($script:cfg.clickThrough) { $script
 
 # Click the pill to dismiss "Task complete" / "Needs your input"; click the mascot to say hi
 $uiPill.Add_MouseLeftButtonUp({
+    $p = $script:popup
+    if ($p -and $p.open) {   # e.g. a screenshot notice: open the file
+        try { Start-Process -FilePath ([string]$p.open) } catch { Write-Log ("open: " + $_.Exception.Message) }
+        $script:popup = $null; Update-Island; return
+    }
     if ($script:dismissKey) { $script:dismissed[$script:dismissKey] = 1; Update-Island }
 })
 $uiMascot.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; Mascot-Hop 'celebrate' })
@@ -1995,6 +2320,13 @@ $miTest.Add_Click({ Start-Test })
 [void]$menu.Items.Add((New-Toggle 'Click through (hold Ctrl to use)' 'clickThrough'))
 [void]$menu.Items.Add((New-Toggle 'Compact notch in fullscreen' 'fullscreenNotch'))
 [void]$menu.Items.Add((New-Toggle 'System stats when idle' 'stats'))
+$miPopups = New-Object System.Windows.Forms.ToolStripMenuItem 'Popups'
+foreach ($pair in @(@('Show popups', 'popups'), @('Devices', 'popupDevices'), @('Volume and brightness', 'popupVolume'),
+                    @('Sound output', 'popupAudioOutput'), @('Caps Lock / Num Lock', 'popupLocks'), @('Battery and charger', 'popupBattery'),
+                    @('Network and VPN', 'popupNetwork'), @('Screenshots', 'popupScreenshots'), @('Clock in fullscreen', 'fullscreenClock'))) {
+    [void]$miPopups.DropDownItems.Add((New-Toggle $pair[0] $pair[1]))
+}
+[void]$menu.Items.Add($miPopups)
 
 function Set-Companion($name) {
     $script:cfg.mascot = [string]$name; Save-Config; Apply-Companion; Mascot-Hop 'perk'
