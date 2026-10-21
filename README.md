@@ -9,7 +9,7 @@ A pill at the top-center of your screen for Windows 10/11, like the iPhone's Dyn
 Hover for a progress bar and previous / play-pause / next.
 
 **Companion**: a little character beside the pill that reacts to all of it. Pick the
-built-in blob, Charlie, or any folder in `custom images`. Make your own with the
+built-in Sprout, Charlie, or any folder in `custom images`. Make your own with the
 [companion guide](docs/companions.md).
 
 **Fullscreen**: while a fullscreen app is in front, the pill becomes a slim notch at
@@ -145,7 +145,7 @@ Options added by future updates are filled in automatically.
 | `updateRepo` | `kilicaslanalper/windows-notch` | The GitHub repo releases come from |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
 | `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
-| `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |
+| `mascot` | `Charlie` | `off`, Sprout in a color (`cloud`, `clay`, `honey`, `sage`, `ocean`, `plum`) or a folder name in `custom images` |
 
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
 
@@ -170,8 +170,7 @@ the island; this folder stays, so delete it if you want everything gone.
 ## Credits
 
 - **[Vorssaint](https://github.com/vorssaint/vorssaint-utils)**, copyright 2026 Vorssaint, GPL-3.0-or-later.
-  This project was inspired by it; the price table (`data/agent-prices.json`), the blob palette and the
-  animation timings are adapted from it. This project isn't affiliated with or endorsed by Vorssaint.
+  This project was inspired by it, and the price table (`data/agent-prices.json`) is adapted from it. This project isn't affiliated with or endorsed by Vorssaint.
 - **Weather data by [Open-Meteo.com](https://open-meteo.com/)** (CC BY 4.0), only when you set `weatherCity`.
 - **Used if you have them, not included:** [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
   (MPL-2.0) for CPU temperatures, NVIDIA's `nvidia-smi` for GPU temperature, and the

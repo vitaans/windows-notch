@@ -6,8 +6,8 @@
 #  * Claude Code status: working / needs your input / task complete (model, tokens, API value)
 #  * Now playing: album art, title, artist, equalizer; hover for progress and controls
 #  * A little mascot that blinks, glances around and hops when a task finishes
-# Inspired by Vorssaint (https://github.com/vorssaint/vorssaint-utils): ideas, price table,
-# mascot palette and pulse timing are adapted from it. GPL-3.0-or-later, see LICENSE.
+# Inspired by Vorssaint (https://github.com/vorssaint/vorssaint-utils); its price table
+# (data\agent-prices.json) is adapted from it. GPL-3.0-or-later, see LICENSE.
 #
 # Draws its own window instead of using Windows notifications, so Focus / Do Not
 # Disturb doesn't hide it and nothing lands in the notification center.
@@ -107,7 +107,7 @@ $script:cfg = [ordered]@{
     updateRepo         = 'kilicaslanalper/windows-notch'   # where releases come from
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
-    mascot             = 'Charlie'  # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
+    mascot             = 'Charlie'  # off, Sprout in a color (cloud, clay, honey, sage, ocean, plum) or a folder name in custom images
     # --- colors
     accent             = '#D97857'  # working (Claude coral)
     doneColor          = '#34C759'
@@ -144,12 +144,12 @@ $DOT = [string][char]0x00B7   # middle dot
 $GLYPH_PLAY  = [string][char]0xE768
 $GLYPH_PAUSE = [string][char]0xE769
 
-# Mascot palette (light top, shaded bottom), from Vorssaint
+# Sprout's colors (light top, shaded bottom); older color names still work
 $script:mascotColors = [ordered]@{
-    pearl = @('#FCFAF5', '#D6D9E6'); lemon = @('#FFF5A3', '#F7D44D'); peach = @('#FFDBBD', '#FAA380')
-    rose  = @('#FFCCDE', '#F28AAD'); lilac = @('#E0D4FF', '#B096F5'); sky   = @('#C4E6FF', '#6EABF7')
-    mint  = @('#B8F7DB', '#66D4A8')
+    cloud = @('#F4F1EA', '#CFCBC2'); clay  = @('#F6C4AE', '#D9805F'); honey = @('#FFE08A', '#E8B64A')
+    sage  = @('#D3EBC9', '#93BF86'); ocean = @('#C3E2F5', '#6FA8D6'); plum  = @('#E4D0F1', '#AE86CF')
 }
+$script:oldColors = @{ pearl = 'cloud'; lemon = 'honey'; peach = 'clay'; rose = 'clay'; lilac = 'plum'; sky = 'ocean'; mint = 'sage' }
 
 # ---- Win32: keep it out of Alt+Tab and never steal focus -------------------
 if (-not ('IslandNative' -as [type])) {
@@ -394,25 +394,28 @@ try {
             <Image x:Name="CompImg" Width="26" Height="26" Visibility="Collapsed" Stretch="Uniform" RenderTransformOrigin="0.5,1">
               <Image.RenderTransform><ScaleTransform/></Image.RenderTransform>
             </Image>
+            <!-- Sprout: a little rounded pebble with a leaf on top -->
             <Canvas x:Name="Blob" Width="22" Height="20">
-            <Ellipse Width="22" Height="20">
-              <Ellipse.Fill>
+            <Path Data="M11,4.6 L11,2.4" Stroke="#5FA35A" StrokeThickness="1.3" StrokeStartLineCap="Round"/>
+            <Path Fill="#7CC77A" Data="M11,2.4 C9.2,0.3 6.6,0.8 6.9,2.5 C8.3,3.4 10,3.1 11,2.4 Z M11,2.4 C12.8,0.3 15.4,0.8 15.1,2.5 C13.7,3.4 12,3.1 11,2.4 Z"/>
+            <Rectangle Canvas.Left="1" Canvas.Top="4" Width="20" Height="16" RadiusX="6" RadiusY="6">
+              <Rectangle.Fill>
                 <LinearGradientBrush StartPoint="0.3,0" EndPoint="0.6,1">
-                  <GradientStop x:Name="MLight" Color="#FCFAF5" Offset="0.1"/>
-                  <GradientStop x:Name="MShade" Color="#D6D9E6" Offset="1"/>
+                  <GradientStop x:Name="MLight" Color="#F4F1EA" Offset="0.1"/>
+                  <GradientStop x:Name="MShade" Color="#CFCBC2" Offset="1"/>
                 </LinearGradientBrush>
-              </Ellipse.Fill>
-            </Ellipse>
-            <Ellipse Canvas.Left="4" Canvas.Top="2.6" Width="6" Height="3.4" Fill="#A6FFFFFF"/>
-            <Canvas x:Name="Eyes" Width="22" Height="20" RenderTransformOrigin="0.5,0.55">
+              </Rectangle.Fill>
+            </Rectangle>
+            <Rectangle Canvas.Left="4" Canvas.Top="6.2" Width="5" Height="2.4" RadiusX="1.2" RadiusY="1.2" Fill="#A6FFFFFF"/>
+            <Canvas x:Name="Eyes" Width="22" Height="20" RenderTransformOrigin="0.5,0.62">
               <Canvas.RenderTransform>
                 <TransformGroup><ScaleTransform/><ScaleTransform/><TranslateTransform/></TransformGroup>
               </Canvas.RenderTransform>
-              <Ellipse x:Name="EyeL" Canvas.Left="6.2" Canvas.Top="7.8" Width="3.2" Height="4.8" Fill="#121214"/>
-              <Ellipse x:Name="EyeR" Canvas.Left="12.6" Canvas.Top="7.8" Width="3.2" Height="4.8" Fill="#121214"/>
-              <Path x:Name="HappyL" Data="M5.6,11.4 Q7.8,7.6 10,11.4" Stroke="#121214" StrokeThickness="1.7"
+              <Ellipse x:Name="EyeL" Canvas.Left="6.9" Canvas.Top="10.4" Width="3" Height="3.8" Fill="#121214"/>
+              <Ellipse x:Name="EyeR" Canvas.Left="12.1" Canvas.Top="10.4" Width="3" Height="3.8" Fill="#121214"/>
+              <Path x:Name="HappyL" Data="M6.3,13.6 Q8.4,10.6 10.5,13.6" Stroke="#121214" StrokeThickness="1.7"
                     StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
-              <Path x:Name="HappyR" Data="M12,11.4 Q14.2,7.6 16.4,11.4" Stroke="#121214" StrokeThickness="1.7"
+              <Path x:Name="HappyR" Data="M11.5,13.6 Q13.6,10.6 15.7,13.6" Stroke="#121214" StrokeThickness="1.7"
                     StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
             </Canvas>
             </Canvas>
@@ -844,7 +847,7 @@ function Hide-Notch {
 # ---- mascot -------------------------------------------------------------
 $script:mood = 'normal'
 # ---- companions -----------------------------------------------------------
-# Built-in: the blob (any palette color). Custom: custom images\<Name>\ with images per state:
+# Built-in: Sprout (any palette color). Custom: custom images\<Name>\ with images per state:
 #   idle.png  working.png  needs.png  done.png  music.png   (only idle.png is required)
 #   animate a state with numbered frames: idle_1.png, idle_2.png, ...
 #   optional companion.json: { "size": 26, "fps": 6, "pixelated": true, "breathe": true }
@@ -930,6 +933,7 @@ function Show-CompState($state) {
 }
 function Apply-Companion {
     $name = [string]$script:cfg.mascot
+    if ($script:oldColors.ContainsKey($name)) { $name = $script:oldColors[$name] }
     $compTimer.Stop(); $script:comp = $null
     Stop-Anim $compScale $ScaleYProp; $compScale.ScaleY = 1
     if (-not $name -or $name -eq 'off') { $uiMascot.Visibility = 'Collapsed'; return }
@@ -947,8 +951,8 @@ function Apply-Companion {
             Show-CompState (Mood-State $script:mood)
             return
         }
-        Write-Log "companion '$name' not found or has no images; using the blob"
-        $name = 'pearl'
+        Write-Log "companion '$name' not found or has no images; using Sprout"
+        $name = 'cloud'
     }
     $uiCompImg.Visibility = 'Collapsed'; $uiBlob.Visibility = 'Visible'
     $uiMLight.Color = New-Color $script:mascotColors[$name][0]
@@ -990,8 +994,8 @@ function Mascot-Mood($mood) {
 function Mascot-Hop($kind) {
     if ($uiMascot.Visibility -ne 'Visible') { return }
     switch ($kind) {
-        # Vorssaint's bounce: two quick hops, the second lower
-        'celebrate' { Keyframes $mHop $TransYProp @(0, -7, 0, -4.9, 0, -1, 0, 0) @(0, .14, .32, .46, .63, .75, .88, 1) 950 }
+        # one springy hop with a small rebound
+        'celebrate' { Keyframes $mHop $TransYProp @(0, -8, 0, -2, 0) @(0, .32, .62, .8, 1) 760 }
         'perk'      { Keyframes $mHop $TransYProp @(0, -4, 0) @(0, .4, 1) 420 }
     }
 }
@@ -1040,6 +1044,7 @@ function Set-Look($mode) {
     $script:look = $key
     Stop-Anim $uiRing $OpacityProp; Stop-Anim $ringSc $ScaleXProp; Stop-Anim $ringSc $ScaleYProp; Stop-Anim $glow $GlowOpProp
     $uiRing.Opacity = 0; $glow.Opacity = 0.55 * $script:glowK
+    Stop-Anim $uiDot $OpacityProp; $uiDot.Opacity = 1
     $uiDot.Visibility = 'Collapsed'; $uiIconBg.Visibility = 'Collapsed'
     $uiCheck.Visibility = 'Collapsed'; $uiBang.Visibility = 'Collapsed'
     Stop-Eq
@@ -1049,10 +1054,8 @@ function Set-Look($mode) {
             $c = [string]$script:cfg.accent
             $uiDot.Fill = New-Brush $c; $uiRing.Stroke = New-Brush $c; $glow.Color = New-Color $c
             $uiDot.Visibility = 'Visible'
-            # Vorssaint's pulse: the ring spreads from the dot as it fades, every 1.6 s
-            Loop $uiRing $OpacityProp 0.6 0.0 1600 $false
-            Loop $ringSc $ScaleXProp 1.0 2.4 1600 $false
-            Loop $ringSc $ScaleYProp 1.0 2.4 1600 $false
+            # the dot breathes slowly while Claude works
+            Loop $uiDot $OpacityProp 1.0 0.4 1100 $true (Sine)
             $glow.Opacity = 0.35 * $script:glowK
             Mascot-Mood 'focused'
         }
@@ -1905,7 +1908,7 @@ $devPs = [PowerShell]::Create()
 # ---- expanded panels ------------------------------------------------------
 # While expanded, round buttons open a panel: music and volume (left), system stats (right).
 # Without a choice, each view opens its own: Claude shows sessions, music shows its controls.
-# Like Vorssaint's notch shelf buttons. $script:panel is '', 'none', 'music' or 'stats'.
+# $script:panel is '', 'none', 'music' or 'stats'.
 $script:panel = ''; $script:holdUntil = 0; $script:lastWant = $null; $script:switchAt = 0
 function Get-WantPanel($view) {
     if ($script:panel -eq 'none') { return '' }
@@ -2642,7 +2645,7 @@ $miMascot.Add_DropDownOpening({
     $off = New-Object System.Windows.Forms.ToolStripMenuItem 'Off'
     $off.Checked = ($cur -eq 'off'); $off.Add_Click({ Set-Companion 'off' })
     [void]$miMascot.DropDownItems.Add($off)
-    $blob = New-Object System.Windows.Forms.ToolStripMenuItem 'Blob'
+    $blob = New-Object System.Windows.Forms.ToolStripMenuItem 'Sprout'
     $blob.Checked = $script:mascotColors.Contains($cur)
     foreach ($n in $script:mascotColors.Keys) {
         $it = New-Object System.Windows.Forms.ToolStripMenuItem ((Get-Culture).TextInfo.ToTitleCase($n))
