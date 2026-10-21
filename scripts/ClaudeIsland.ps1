@@ -1,5 +1,5 @@
 # Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
-# Claude Island - a Dynamic-Island-style pill for Windows.
+# Windows Notch - a pill at the top of your screen for Windows, like the iPhone's Dynamic Island.
 # Lives in <island folder>\scripts. Settings: <island folder>\settings.json (applied live).
 # Companions: <island folder>\custom images\<name>\ (see docs\companions.md).
 # Replacing this file (or the hook) is all an update needs: the island restarts itself.
@@ -362,7 +362,7 @@ try {
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Claude Island" WindowStyle="None" AllowsTransparency="True"
+        Title="Windows Notch" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" Topmost="True" ShowInTaskbar="False"
         ShowActivated="False" ResizeMode="NoResize" SizeToContent="Manual" Width="760" Height="380"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
@@ -752,7 +752,7 @@ $win.Add_SourceInitialized({
 [xml]$notchXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Claude Island Notch" WindowStyle="None" AllowsTransparency="True"
+        Title="Windows Notch Bar" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False"
         ResizeMode="NoResize" SizeToContent="WidthAndHeight" UseLayoutRounding="True">
   <!-- VerticalAlignment Top: Windows keeps windows at least ~39 px tall, so a centered
@@ -2586,7 +2586,7 @@ $g.Dispose()
 
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
-$tray.Text = 'Claude Island'
+$tray.Text = 'Windows Notch'
 $tray.Visible = $true
 
 $script:toggles = @()
@@ -2667,7 +2667,10 @@ $miMascot.Add_DropDownOpening({
 [void]$menu.Items.Add($miMascot)
 
 # Start with Windows: a shortcut in the user's Startup folder
-$script:startupLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'Claude Island.lnk'
+$script:startupLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'Windows Notch.lnk'
+# the shortcut had the old name (Claude Island) before; carry the choice over
+$oldLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'Claude Island.lnk'
+if (Test-Path -LiteralPath $oldLnk) { try { Move-Item -LiteralPath $oldLnk $script:startupLnk -Force } catch { } }
 function Set-Autostart([bool]$on) {
     try {
         if ($on) {
@@ -2678,7 +2681,7 @@ function Set-Autostart([bool]$on) {
             $lnk.TargetPath  = $psExe
             $lnk.Arguments   = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$self`""
             $lnk.WindowStyle = 7
-            $lnk.Description = 'Claude Island overlay'
+            $lnk.Description = 'Windows Notch'
             $lnk.Save()
         } else {
             Remove-Item -LiteralPath $script:startupLnk -Force -ErrorAction SilentlyContinue

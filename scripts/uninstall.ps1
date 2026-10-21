@@ -1,5 +1,5 @@
 # Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
-# Claude Island uninstaller: removes the Claude Code hooks and the startup shortcut,
+# Windows Notch uninstaller: removes the Claude Code hooks and the startup shortcut,
 # and stops the island. Your folder (custom images, settings.json) is left alone -
 # delete it yourself if you want everything gone.
 $ErrorActionPreference = 'Continue'
@@ -27,7 +27,7 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
     Where-Object { $_.CommandLine -match 'ClaudeIsland\.ps1' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-Remove-Item (Join-Path ([Environment]::GetFolderPath('Startup')) 'Claude Island.lnk') -Force -ErrorAction SilentlyContinue
+foreach ($n in 'Windows Notch.lnk', 'Claude Island.lnk') { Remove-Item (Join-Path ([Environment]::GetFolderPath('Startup')) $n) -Force -ErrorAction SilentlyContinue }
 Remove-Item (Join-Path $env:LOCALAPPDATA 'ClaudeIsland') -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path (Split-Path $PSScriptRoot -Parent) 'state') -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host 'Claude Island stopped and removed. This folder is still here with your custom images and settings.' -ForegroundColor Green
+Write-Host 'Windows Notch stopped and removed. This folder is still here with your custom images and settings.' -ForegroundColor Green

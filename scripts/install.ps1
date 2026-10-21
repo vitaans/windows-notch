@@ -1,5 +1,5 @@
 # Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
-# Claude Island setup - run once (Install.cmd). Everything runs from this folder;
+# Windows Notch setup - run once (Install.cmd). Everything runs from this folder;
 # after this, updating is just replacing files here: the island restarts itself.
 # - points Claude Code's hooks at scripts\island-hook.ps1 (backup of settings.json kept)
 # - moves over settings from the old %LOCALAPPDATA%\ClaudeIsland install, if any
@@ -12,7 +12,9 @@ $root    = Split-Path $scripts -Parent
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'state\sessions'), (Join-Path $root 'custom images') | Out-Null
 Get-ChildItem $scripts -Filter *.ps1 | Unblock-File -ErrorAction SilentlyContinue
 
-$lnkPath  = Join-Path ([Environment]::GetFolderPath('Startup')) 'Claude Island.lnk'
+$lnkPath  = Join-Path ([Environment]::GetFolderPath('Startup')) 'Windows Notch.lnk'
+$oldLnk   = Join-Path ([Environment]::GetFolderPath('Startup')) 'Claude Island.lnk'   # the old name
+if (Test-Path $oldLnk) { Move-Item $oldLnk $lnkPath -Force }
 $oldDir   = Join-Path $env:LOCALAPPDATA 'ClaudeIsland'
 $hadOld   = Test-Path $oldDir
 $hadState = Test-Path (Join-Path $root 'state\island.log')
@@ -58,7 +60,7 @@ Write-Host 'Pointing Claude Code hooks at this folder...'
 foreach ($ev in 'UserPromptSubmit', 'PreToolUse', 'Notification', 'Stop', 'SessionEnd') {
     $existing = @()
     if ($settings.hooks.PSObject.Properties[$ev]) { $existing = @($settings.hooks.$ev) }
-    # drop previous Claude Island entries (old or new location) so re-running is safe
+    # drop previous entries of ours (old or new location) so re-running is safe
     $kept = @($existing | Where-Object { $_ -and -not ((@($_.hooks) | ForEach-Object { [string]$_.command }) -join ' ' -match 'ClaudeIsland|island-hook\.ps1') })
 
     $entry = New-Object PSObject
@@ -81,7 +83,7 @@ if ($firstInstall -or (Test-Path $lnkPath)) {
     $lnk.TargetPath  = $psExe
     $lnk.Arguments   = $launchArgs
     $lnk.WindowStyle = 7
-    $lnk.Description = 'Claude Island overlay'
+    $lnk.Description = 'Windows Notch'
     $lnk.Save()
 } else {
     Write-Host 'Start with Windows: off (kept as you set it).'
@@ -91,7 +93,7 @@ if ($firstInstall -or (Test-Path $lnkPath)) {
 Start-Process -FilePath $psExe -ArgumentList $launchArgs -WindowStyle Hidden
 
 Write-Host ''
-Write-Host "Claude Island is running from $root" -ForegroundColor Green
+Write-Host "Windows Notch is running from $root" -ForegroundColor Green
 Write-Host 'Right-click the pill icon in the tray for options and a test run.'
 Write-Host 'Restart open Claude Code sessions so they pick up the hooks.'
 Write-Host 'From now on, updates are just new files in this folder - no reinstalling.'

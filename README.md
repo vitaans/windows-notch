@@ -1,6 +1,6 @@
-# Claude Island
+# Windows Notch
 
-A Dynamic-Island-style pill at the top-center of your screen for Windows 10/11.
+A pill at the top-center of your screen for Windows 10/11, like the iPhone's Dynamic Island, made for Claude Code.
 
 **Claude Code**: what Claude is doing, when it needs you, and when a task is done
 (with model, tokens, estimated API value and duration). Hover for every session.

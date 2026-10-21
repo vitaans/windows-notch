@@ -1,5 +1,5 @@
 # Copyright (C) 2026 the windows-notch authors. Licensed GPL-3.0-or-later, see LICENSE.
-# Claude Island - hook script (lives in <island folder>\scripts, writes to <island folder>\state)
+# Windows Notch - hook script (lives in <island folder>\scripts, writes to <island folder>\state)
 # Claude Code runs this on UserPromptSubmit, PreToolUse, Notification, Stop and SessionEnd.
 # It reads the hook JSON from stdin and writes a tiny per-session status file
 # that the overlay (ClaudeIsland.ps1) picks up. It must never print anything:
