@@ -99,6 +99,8 @@ $script:cfg = [ordered]@{
     calendarMinutes    = 5          # how early to remind you of a meeting
     timerMinutes       = 25         # Pomodoro: focus length (tray menu > Timer)
     breakMinutes       = 5          # Pomodoro: break length
+    sleepAfterMinutes  = 5          # the companion falls asleep after this long without mouse or keyboard (0 = never)
+    weatherCity        = ''         # a city name (e.g. Istanbul) to show the weather in the stats; empty = off
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
     mascot             = 'pearl'    # off, a blob color (pearl, lemon, peach, rose, lilac, sky, mint) or a folder name in custom images
@@ -268,6 +270,9 @@ public static class IslandNative {
         ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual; }
     [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx([In, Out] MEMSTAT m);
     [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
+    [StructLayout(LayoutKind.Sequential)] struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+    [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO li);
+    public static uint IdleMs() { var li = new LASTINPUTINFO(); li.cbSize = 8; return GetLastInputInfo(ref li) ? (uint)Environment.TickCount - li.dwTime : 0; }
     public static int MemoryLoad() { var m = new MEMSTAT(); return GlobalMemoryStatusEx(m) ? (int)m.dwMemoryLoad : -1; }
     public static double[] MemoryGB() {   // used, total
         var m = new MEMSTAT(); if (!GlobalMemoryStatusEx(m)) return null;
@@ -378,6 +383,10 @@ try {
             <Grid.RenderTransform>
               <TransformGroup><TranslateTransform/><TranslateTransform/></TransformGroup>
             </Grid.RenderTransform>
+            <TextBlock x:Name="Zzz" Text="z" FontFamily="Segoe UI" FontSize="10" FontWeight="Bold" Foreground="#CCFFFFFF"
+                       HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-8,-6,0" Opacity="0" IsHitTestVisible="False">
+              <TextBlock.RenderTransform><TranslateTransform/></TextBlock.RenderTransform>
+            </TextBlock>
             <Image x:Name="CompImg" Width="26" Height="26" Visibility="Collapsed" Stretch="Uniform" RenderTransformOrigin="0.5,1">
               <Image.RenderTransform><ScaleTransform/></Image.RenderTransform>
             </Image>
@@ -586,7 +595,7 @@ foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText'
                'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
                'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
                'StatsPanel','StatLines','Tools','ToolsSpace',
-               'PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel') {
+               'Zzz','PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -885,7 +894,7 @@ function Load-Companion($name) {
     }
     $files = @(Get-ChildItem -LiteralPath $dir -File)
     $frames = @{}
-    foreach ($st in 'idle', 'working', 'needs', 'done', 'music') { $frames[$st] = @(Load-Frames $files $st) }
+    foreach ($st in 'idle', 'working', 'needs', 'done', 'music', 'sleep') { $frames[$st] = @(Load-Frames $files $st) }
     if ($frames.idle.Count -eq 0) {
         # No idle.png: use the first state that has images, or else every image in the folder
         $first = @('working', 'needs', 'done', 'music' | Where-Object { $frames[$_].Count } | Select-Object -First 1)
@@ -897,13 +906,13 @@ function Load-Companion($name) {
     @{ name = $name; dir = $dir; meta = $meta; frames = $frames }
 }
 function Mood-State($mood) {
-    switch ($mood) { 'focused' { 'working' } 'alert' { 'needs' } 'happy' { 'done' } 'groove' { 'music' } default { 'idle' } }
+    switch ($mood) { 'focused' { 'working' } 'alert' { 'needs' } 'happy' { 'done' } 'groove' { 'music' } 'sleepy' { 'sleep' } default { 'idle' } }
 }
 function Show-CompState($state) {
     $c = $script:comp
     if (-not $c) { return }
     $fr = $c.frames[$state]
-    if (-not $fr -or $fr.Count -eq 0) { $fr = $c.frames.idle }
+    if (-not $fr -or $fr.Count -eq 0) { $fr = if ($state -eq 'sleep') { @($c.frames.idle[0]) } else { $c.frames.idle } }   # asleep: hold still
     $script:compFrames = @($fr); $script:compFrame = 0
     $uiCompImg.Source = $script:compFrames[0]
     $fps = [math]::Max(1, [math]::Min(30, [double]$c.meta.fps))
@@ -943,6 +952,11 @@ function Apply-Companion {
 }
 function Mascot-Mood($mood) {
     if ($script:mood -eq $mood) { return }
+    if ($script:mood -eq 'sleepy') {   # waking up
+        Stop-Anim $uiZzz $OpacityProp; $uiZzz.Opacity = 0; Stop-Anim $uiZzz.RenderTransform $TransYProp
+        Stop-Anim $eyeBlink $ScaleYProp; $eyeBlink.ScaleY = 1
+        if ($script:comp) { Stop-Anim $compScale $ScaleYProp; $compScale.ScaleY = 1 }
+    }
     $script:mood = $mood
     if ($script:comp) { Show-CompState (Mood-State $mood) }
     Stop-Anim $mBob $TransYProp; $mBob.Y = 0
@@ -958,6 +972,15 @@ function Mascot-Mood($mood) {
         'happy'  { Mascot-Hop 'celebrate' }
         'alert'  { Mascot-Hop 'perk' }
         'groove' { Loop $mBob $TransYProp 0 -1.6 280 $true (Sine) }
+        'sleepy' {
+            # eyes shut, slow breathing and a little "z" drifting up
+            $eyeBlink.BeginAnimation($ScaleYProp, $null); $eyeBlink.ScaleY = 0.12
+            if ($script:comp -and -not ($script:comp.frames.sleep.Count)) { Loop $compScale $ScaleYProp 1.0 0.95 1800 $true (Sine) }
+            if (-not ($script:comp -and $script:comp.frames.sleep.Count)) {   # a companion's own sleep frames draw their own z
+                Loop $uiZzz $OpacityProp 0 0.9 1400 $true (Sine)
+                Loop $uiZzz.RenderTransform $TransYProp 2 -4 2800 $false
+            }
+        }
     }
 }
 function Mascot-Hop($kind) {
@@ -970,7 +993,7 @@ function Mascot-Hop($kind) {
 }
 function Mascot-Blink {
     if ($script:comp) { return }
-    if ($script:mood -eq 'happy' -or $script:mood -eq 'groove') { return }
+    if ($script:mood -eq 'happy' -or $script:mood -eq 'groove' -or $script:mood -eq 'sleepy') { return }
     Keyframes $eyeBlink $ScaleYProp @(1, 0.08, 0.08, 1) @(0, .35, .55, 1) 200
 }
 function Mascot-Glance {
@@ -1792,6 +1815,7 @@ function Poll-Events($now) {
     # calendar: a meeting starting soon (from the iCal link, fetched in the background)
     $script:stats.icsUrl = [string]$c.calendarIcsUrl
     $script:stats.github = [bool]$c.popupGitHub; $script:stats.inbox = $script:inboxDir
+    $script:stats.weatherCity = [string]$c.weatherCity
     $soon = [int](Clamp $c.calendarMinutes 1 120) * 60000
     foreach ($ev in @($script:stats.meetings)) {
         if (-not $ev) { continue }
@@ -1998,6 +2022,13 @@ function Set-StatLine($line, $frac, [string]$text) {
     else { $line.bar.Visibility = 'Visible'; $line.fill.RenderTransform.ScaleX = Clamp $frac 0 1 }
     $line.value.Text = $text
 }
+function Get-WeatherText([int]$code) {   # WMO weather codes, as Open-Meteo reports them
+    switch ($code) {
+        0 { 'Clear' } { $_ -in 1, 2 } { 'Partly cloudy' } 3 { 'Cloudy' } { $_ -in 45, 48 } { 'Fog' }
+        { $_ -ge 51 -and $_ -le 57 } { 'Drizzle' } { $_ -ge 61 -and $_ -le 67 } { 'Rain' } { $_ -ge 71 -and $_ -le 77 } { 'Snow' }
+        { $_ -ge 80 -and $_ -le 82 } { 'Showers' } { $_ -in 85, 86 } { 'Snow showers' } { $_ -ge 95 } { 'Thunderstorm' } default { '' }
+    }
+}
 function Fill-StatsPanel {
     if (-not $script:statLines) {
         $script:statGrid = New-Object System.Windows.Controls.Grid
@@ -2010,6 +2041,12 @@ function Fill-StatsPanel {
             cpu = New-StatCell 'CPU' 0 0; gpu = New-StatCell 'GPU' 1 0
             ram = New-StatCell 'RAM' 0 1; net = New-StatCell 'NET' 1 1
         }
+        $script:statGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition))
+        $script:wxText = New-Object System.Windows.Controls.TextBlock
+        $script:wxText.Foreground = New-Brush '#CCFFFFFF'; $script:wxText.FontSize = 12; $script:wxText.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+        $script:wxText.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'
+        [System.Windows.Controls.Grid]::SetRow($script:wxText, 2); [System.Windows.Controls.Grid]::SetColumnSpan($script:wxText, 2)
+        [void]$script:statGrid.Children.Add($script:wxText)
     }
     $st = $script:stats; $L = $script:statLines; $deg = [string][char]0x00B0
     $t = if ($null -ne $st.cpu) { "$($st.cpu)%" } else { '--' }; if ($null -ne $st.cpuTemp) { $t += " $($st.cpuTemp)$deg" }
@@ -2021,6 +2058,9 @@ function Fill-StatsPanel {
     $t = if ($gb) { '{0}/{1} GB' -f $gb[0].ToString('0.0', $INV), $gb[1].ToString('0', $INV) } else { '--' }
     Set-StatLine $L.ram $(if ($null -ne $st.ram -and $st.ram -ge 0) { $st.ram / 100 }) $t
     Set-StatLine $L.net $null ([string][char]0x2193 + (Format-Rate $st.down) + ' ' + [char]0x2191 + (Format-Rate $st.up))
+    $wx = $st.weather
+    $script:wxText.Visibility = if ($script:cfg.weatherCity) { 'Visible' } else { 'Collapsed' }
+    $script:wxText.Text = if (-not $wx) { 'Weather' + $ELL } elseif ($null -eq $wx.temp) { $wx.city } else { "$($wx.temp)$([char]0x00B0)  $(Get-WeatherText $wx.code)  $DOT  $($wx.city)" }
 }
 # ---- system stats ---------------------------------------------------------
 # Collected on a background runspace every 2 s, so slow sources (performance counters,
@@ -2032,7 +2072,7 @@ $script:stats = [hashtable]::Synchronized(@{ on = $true; want = [bool]$script:cf
 $statsPs = [PowerShell]::Create()
 [void]$statsPs.AddScript({
     param($st)
-    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true; $icsUrlWas = $null; $gh = $null; $ghPrev = $null
+    $prev = $null; $netPrev = $null; $gpu = @{}; $tick = 0; $lhmNs = $null; $conn = $null; $bright = $null; $brightOK = $true; $icsUrlWas = $null; $gh = $null; $ghPrev = $null; $wxCity = $null; $wxGeo = $null
     $smi = $null; try { $smi = (Get-Command nvidia-smi.exe -ErrorAction Stop).Source } catch { }
     while ($st.on) {
         try {
@@ -2109,6 +2149,25 @@ $statsPs = [PowerShell]::Create()
                 $st.meetings = $list
             } catch { }
         } elseif (-not $url) { $st.meetings = @() }
+        # weather (Open-Meteo, free and keyless): look the city up once, then every 15 minutes
+        $city = [string]$st.weatherCity
+        if (-not $city) { $st.weather = $null }
+        elseif ($city -ne $wxCity -or $tick % 450 -eq 7) {
+            try {
+                $wc = New-Object System.Net.WebClient; $wc.Encoding = [Text.Encoding]::UTF8
+                if ($city -ne $wxCity -or -not $wxGeo) {
+                    $g = ($wc.DownloadString('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + [Uri]::EscapeDataString($city)) | ConvertFrom-Json).results[0]
+                    $wxGeo = if ($g) { @{ lat = [double]$g.latitude; lon = [double]$g.longitude; name = [string]$g.name } } else { $null }
+                    $wxCity = $city
+                }
+                if ($wxGeo) {
+                    $inv = [Globalization.CultureInfo]::InvariantCulture
+                    $url = 'https://api.open-meteo.com/v1/forecast?current=temperature_2m,weather_code&latitude=' + $wxGeo.lat.ToString($inv) + '&longitude=' + $wxGeo.lon.ToString($inv)
+                    $cur = ($wc.DownloadString($url) | ConvertFrom-Json).current
+                    $st.weather = @{ temp = [int][math]::Round([double]$cur.temperature_2m); code = [int]$cur.weather_code; city = $wxGeo.name }
+                } else { $st.weather = @{ temp = $null; code = -1; city = "$city (not found)" } }
+            } catch { }
+        }
         # GitHub: your open pull requests' checks and reviews, every 2 minutes (needs the gh CLI, signed in)
         if ($st.github -and $tick % 60 -eq 5) {
             if (-not $gh) { try { $gh = (Get-Command gh.exe -ErrorAction Stop).Source } catch { } }
@@ -2234,6 +2293,9 @@ function Render-Stats {
 function Show-Stats {
     $uiClaudeRow.Visibility = 'Collapsed'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Visible'; $uiPopupRow.Visibility = 'Collapsed'
     Set-Look 'stats'
+    $sleep = [double]$script:cfg.sleepAfterMinutes
+    if ($sleep -gt 0 -and [IslandNative]::IdleMs() -gt $sleep * 60000) { Mascot-Mood 'sleepy' }
+    elseif ($script:mood -eq 'sleepy') { Mascot-Mood 'normal' }
     Render-Stats
     Update-Panels 'stats' $null (Get-Now)
     $script:dismissKey = ''
@@ -2253,7 +2315,7 @@ $script:firstTick   = $true
 function Update-Island {
     try {
         $now = Get-Now
-        $script:stats.want = [bool]$script:cfg.stats
+        $script:stats.want = [bool]$script:cfg.stats; $script:stats.weatherCity = [string]$script:cfg.weatherCity
         $sessions = New-Object System.Collections.ArrayList
         foreach ($f in [IO.Directory]::GetFiles($SessDir, '*.json')) {
             try { $s = [IO.File]::ReadAllText($f) | ConvertFrom-Json } catch { continue }

@@ -132,6 +132,8 @@ Options added by future updates are filled in automatically.
 | `timerMinutes` | `25` | Pomodoro focus length (tray menu → Timer) |
 | `breakMinutes` | `5` | Pomodoro break length |
 | `popupGitHub` | `true` | Your open pull requests: checks passed / failed, approved, changes requested. Needs the [GitHub CLI](https://cli.github.com) installed and signed in (`gh auth login`) |
+| `sleepAfterMinutes` | `5` | The companion falls asleep after this long without mouse or keyboard (0 = never) |
+| `weatherCity` | `""` | A city (e.g. `Istanbul`) to show the weather in the stats panel, from Open-Meteo (free, no account) |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
 | `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
 | `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |

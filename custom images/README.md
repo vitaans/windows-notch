@@ -17,5 +17,6 @@ Quick reference:
 | `needs.png` | Claude needs your input |
 | `done.png` | a task just finished |
 | `music.png` | music is playing |
+| `sleep.png` | you've been away for a while |
 
 Animate a mood with numbered frames: `idle_1.png`, `idle_2.png`, ...

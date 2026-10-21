@@ -18,6 +18,7 @@ One small picture (or a short loop of pictures) for each mood:
 | needs | `needs.png` | Claude is waiting on you (a permission or a question) |
 | done | `done.png` | A task just finished |
 | music | `music.png` | Music is playing and Claude is idle |
+| sleep | `sleep.png` | You've been away from the mouse and keyboard for a while (falls back to the first idle frame, held still) |
 
 A mood without its own image falls back to `idle.png`, so you can start with a
 single picture and add more later.

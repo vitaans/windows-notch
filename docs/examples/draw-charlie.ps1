@@ -94,6 +94,9 @@ Save-Png (Frame 'open' $bang2)         'needs_2.png'
 # done: happy eyes and a sparkle
 Save-Png (Frame 'happy' @{ '1,2' = 'Y'; '5,14' = 'Y' }) 'done_1.png'
 Save-Png (Frame 'happy' @{ '2,13' = 'Y'; '0,3' = 'Y' }) 'done_2.png'
+# sleep: eyes shut, a "z" that comes and goes (shown after a while without mouse or keyboard)
+Save-Png (Frame 'blink' @{ '0,13' = 'N'; '0,14' = 'N'; '0,15' = 'N'; '1,15' = 'N'; '2,14' = 'N'; '3,13' = 'N'; '3,14' = 'N'; '3,15' = 'N' }) 'sleep_1.png'
+Save-Png (Frame 'blink') 'sleep_2.png'
 # music: a note hopping from side to side
 Save-Png (Frame 'blink' $noteR) 'music_1.png'
 Save-Png (Frame 'blink' $noteL) 'music_2.png'
