@@ -140,17 +140,17 @@ Options added by future updates are filled in automatically.
 | `breakMinutes` | `5` | Pomodoro break length |
 | `popupGitHub` | `true` | Your open pull requests: checks passed / failed, approved, changes requested. Needs the [GitHub CLI](https://cli.github.com) installed and signed in (`gh auth login`) |
 | `sleepAfterMinutes` | `5` | The companion falls asleep after this long without mouse or keyboard (0 = never) |
-| `weatherCity` | `""` | A city (e.g. `Istanbul`) to show the weather in the stats panel, from Open-Meteo (free, no account) |
+| `weatherCity` | `""` | Your city (e.g. `Istanbul`) for the weather button, from Open-Meteo (free, no account). Or tray menu → Weather city |
 | `updateCheck` | `true` | Look for a newer release once a day (nothing installs without your click) |
 | `updateRepo` | `kilicaslanalper/windows-notch` | The GitHub repo releases come from |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
-| `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
+| `statsItems` | `cpu,gpu,ram,net` | Which stats show while idle, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed), `weather`. Easiest from the tray menu → Idle stats |
 | `mascot` | `Charlie` | `off`, Sprout in a color (`cloud`, `clay`, `honey`, `sage`, `ocean`, `plum`) or a folder name in `custom images` |
 
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
 
 **Expanded island**: hover it (Ctrl+click first when click-through is on) to expand it. The round
-buttons at the bottom stay in the same place: the left one opens music and volume controls (click or drag the bar, scroll to adjust, the
+buttons at the bottom stay in the same place: the left one opens music and volume controls, the middle one the weather (now and the next hours) (click or drag the bar, scroll to adjust, the
 speaker mutes); the one on the right opens system stats. Click a button again to close its panel.
 
 **System stats**: CPU and GPU load, RAM use and network speed work out of the box.

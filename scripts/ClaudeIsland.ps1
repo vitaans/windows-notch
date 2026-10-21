@@ -106,7 +106,7 @@ $script:cfg = [ordered]@{
     updateCheck        = $true      # once a day, look for a newer release on GitHub (you're asked before anything installs)
     updateRepo         = 'kilicaslanalper/windows-notch'   # where releases come from
     stats              = $true      # when nothing else is on, show system stats in the pill
-    statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
+    statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, weather, in the order you want them (tray menu > Idle stats)
     mascot             = 'Charlie'  # off, Sprout in a color (cloud, clay, honey, sage, ocean, plum) or a folder name in custom images
     # --- colors
     accent             = '#D97857'  # working (Claude coral)
@@ -562,6 +562,27 @@ try {
           </StackPanel>
         </StackPanel>
 
+        <!-- Weather (weather button) -->
+        <StackPanel x:Name="WeatherPanel" Visibility="Collapsed" ToolTip="Weather data by Open-Meteo.com (CC BY 4.0)">
+          <StackPanel Margin="2,12,2,0" MinWidth="250">
+            <Border Height="1" Background="#1FFFFFFF" Margin="0,0,0,8"/>
+            <DockPanel>
+              <TextBlock x:Name="WxIcon" DockPanel.Dock="Left" FontFamily="Segoe UI Symbol, Segoe UI Emoji" FontSize="26"
+                         Foreground="#FFFFFFFF" VerticalAlignment="Center" Margin="0,0,10,0"/>
+              <TextBlock x:Name="WxTemp" DockPanel.Dock="Left" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="28"
+                         FontWeight="SemiBold" Foreground="#FFFFFFFF" VerticalAlignment="Center"/>
+              <TextBlock x:Name="WxHiLo" DockPanel.Dock="Right" FontFamily="Cascadia Mono, Consolas" FontSize="11.5"
+                         Foreground="#99FFFFFF" VerticalAlignment="Center"/>
+              <StackPanel Margin="12,0,8,0" VerticalAlignment="Center">
+                <TextBlock x:Name="WxCond" Foreground="#FFFFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13" FontWeight="SemiBold"/>
+                <TextBlock x:Name="WxCity" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="11.5"
+                           TextTrimming="CharacterEllipsis" MaxWidth="170"/>
+              </StackPanel>
+            </DockPanel>
+            <UniformGrid x:Name="WxHours" Rows="1" Margin="0,10,0,4"/>
+          </StackPanel>
+        </StackPanel>
+
         <!-- room for the panel buttons below -->
         <Border x:Name="ToolsSpace" Height="42" Visibility="Collapsed"/>
       </StackPanel>
@@ -572,6 +593,11 @@ try {
         <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
                 HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
           <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                     Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <Border x:Name="BtnWeatherPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                HorizontalAlignment="Center" Cursor="Hand" ToolTip="Weather">
+          <TextBlock Text="&#x2600;" FontFamily="Segoe UI Symbol" FontSize="14"
                      Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
@@ -601,7 +627,7 @@ foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText'
                'ProgGrid','ProgTrack','ProgFill','TimeGrid','PosText','DurText','BtnPrev','BtnPlay','BtnNext','PlayGlyph',
                'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
                'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
-               'StatsPanel','StatLines','Tools','ToolsSpace',
+               'StatsPanel','StatLines','Tools','ToolsSpace','WeatherPanel','WxIcon','WxTemp','WxHiLo','WxCond','WxCity','WxHours','BtnWeatherPanel',
                'Zzz','PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
@@ -1186,24 +1212,26 @@ $script:sizeHover = $false
 # so switching panels or data arriving never resizes the island.
 function Get-FixedHeight {
     if (-not $script:statLines) { Fill-StatsPanel }
-    $els = @($uiDetails, $uiMusicDetails, $uiStatsPanel, $uiMPanelInfo, $uiProgGrid, $uiTimeGrid)
+    $els = @($uiDetails, $uiMusicDetails, $uiStatsPanel, $uiWeatherPanel, $uiMPanelInfo, $uiProgGrid, $uiTimeGrid)
     $was = @($els | ForEach-Object { $_.Visibility })
     $inf = New-Object System.Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)
-    $uiDetails.Visibility = 'Collapsed'; $uiStatsPanel.Visibility = 'Collapsed'
+    foreach ($e in $uiDetails, $uiStatsPanel, $uiWeatherPanel) { $e.Visibility = 'Collapsed' }   # one panel at a time
     foreach ($e in $uiMusicDetails, $uiProgGrid, $uiTimeGrid) { $e.Visibility = 'Visible' }
     $uiMPanelInfo.Visibility = if ($script:viewKind -eq 'music') { 'Collapsed' } else { 'Visible' }
     $uiInner.Measure($inf); $h1 = $uiInner.DesiredSize.Height
     $uiMusicDetails.Visibility = 'Collapsed'; $uiStatsPanel.Visibility = 'Visible'
     $uiInner.Measure($inf); $h2 = $uiInner.DesiredSize.Height
+    $uiStatsPanel.Visibility = 'Collapsed'; $uiWeatherPanel.Visibility = 'Visible'
+    $uiInner.Measure($inf); $h3 = $uiInner.DesiredSize.Height
     for ($i = 0; $i -lt $els.Count; $i++) { $els[$i].Visibility = $was[$i] }
-    [math]::Ceiling([math]::Max($h1, $h2))
+    [math]::Ceiling([math]::Max($h1, [math]::Max($h2, $h3)))
 }
 function Sync-Size {
     $hoverChanged = ($script:hover -ne $script:sizeHover)
     $script:sizeHover = $script:hover
     $ms = if ($hoverChanged) { Get-Ms 'expandMs' } else { Get-Ms 'resizeMs' }
     # Measure the natural size, counting panels that are on their way out as already gone
-    $closing = @($uiDetails, $uiMusicDetails, $uiStatsPanel, $uiTools | Where-Object { [string]$_.Tag -eq 'closing' })
+    $closing = @($uiDetails, $uiMusicDetails, $uiStatsPanel, $uiWeatherPanel, $uiTools | Where-Object { [string]$_.Tag -eq 'closing' })
     foreach ($c in $closing) { $c.Visibility = 'Collapsed' }
     $uiInner.Width = [double]::NaN
     $uiInner.Measure((New-Object System.Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)))
@@ -1296,7 +1324,7 @@ function Hide-Pill {
     if (-not $script:shown) { return }
     $script:shown = $false
     $script:hover = $false
-    foreach ($p in $uiDetails, $uiMusicDetails, $uiStatsPanel, $uiTools) { $p.Visibility = 'Collapsed'; $p.Tag = '' }
+    foreach ($p in $uiDetails, $uiMusicDetails, $uiStatsPanel, $uiWeatherPanel, $uiTools) { $p.Visibility = 'Collapsed'; $p.Tag = '' }
     $script:panel = ''; Set-Dark $false
     $uiPill.IsHitTestVisible = $false
     $ease = New-Object System.Windows.Media.Animation.CubicEase
@@ -1928,16 +1956,18 @@ function Update-Panels($view, $sessions, $now) {
     $want = Get-WantPanel $view
     $swap = $script:hover -and $null -ne $script:lastWant -and $want -ne $script:lastWant
     $script:lastWant = if ($script:hover) { $want } else { $null }
-    $panels = [ordered]@{ sessions = $uiDetails; music = $uiMusicDetails; stats = $uiStatsPanel }
+    $panels = [ordered]@{ sessions = $uiDetails; music = $uiMusicDetails; stats = $uiStatsPanel; weather = $uiWeatherPanel }
     if ($swap) { foreach ($k in $panels.Keys) { if ($k -ne $want) { Hide-Now $panels[$k] } } }
     if ($script:hover -and $want -eq 'sessions') { Render-Details $sessions $now } elseif (-not $swap) { Shrink-Out $uiDetails }
     if ($script:hover -and $want -eq 'music') { Fill-MusicPanel $view $now; if (-not $swap) { Grow-In $uiMusicDetails } } elseif (-not $swap) { Shrink-Out $uiMusicDetails }
     if ($script:hover -and $want -eq 'stats') { Fill-StatsPanel; if (-not $swap) { Grow-In $uiStatsPanel } } elseif (-not $swap) { Shrink-Out $uiStatsPanel }
+    if ($script:hover -and $want -eq 'weather') { Fill-WeatherPanel; if (-not $swap) { Grow-In $uiWeatherPanel } } elseif (-not $swap) { Shrink-Out $uiWeatherPanel }
     if ($swap -and $want -and ($want -ne 'sessions' -or $uiRows.Children.Count)) { Show-Now $panels[$want] }
     if ($script:hover) { Grow-In $uiTools } else { Shrink-Out $uiTools }
     $uiToolsSpace.Visibility = if ($script:hover) { 'Visible' } else { 'Collapsed' }
     $uiBtnMusicPanel.Background = New-Brush $(if ($want -eq 'music') { '#4DFFFFFF' } else { '#1AFFFFFF' })
     $uiBtnStatsPanel.Background = New-Brush $(if ($want -eq 'stats') { '#4DFFFFFF' } else { '#1AFFFFFF' })
+    $uiBtnWeatherPanel.Background = New-Brush $(if ($want -eq 'weather') { '#4DFFFFFF' } else { '#1AFFFFFF' })
 }
 # A button opens its panel; pressing the open panel's button again does nothing, and clicks
 # while a switch is still settling are ignored.
@@ -1950,6 +1980,7 @@ function Open-Panel($which) {
     Update-Island
 }
 $uiBtnMusicPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'music' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
+$uiBtnWeatherPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'weather' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
 $uiBtnStatsPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'stats' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
 
 function Fill-MusicPanel($view, $now) {
@@ -2043,6 +2074,39 @@ function Get-WeatherText([int]$code) {   # WMO weather codes, as Open-Meteo repo
         { $_ -ge 80 -and $_ -le 82 } { 'Showers' } { $_ -in 85, 86 } { 'Snow showers' } { $_ -ge 95 } { 'Thunderstorm' } default { '' }
     }
 }
+function Get-WeatherIcon([int]$code) {   # plain symbols, so they follow the island's text color
+    if ($code -eq 0) { [string][char]0x2600 } elseif ($code -le 2) { [string][char]0x26C5 } elseif ($code -eq 3 -or $code -in 45, 48) { [string][char]0x2601 }
+    elseif ($code -ge 95) { [string][char]0x26A1 } elseif (($code -ge 71 -and $code -le 77) -or $code -in 85, 86) { [string][char]0x2744 } elseif ($code -ge 51) { [string][char]0x2602 } else { '' }
+}
+function Fill-WeatherPanel {
+    $wx = $script:stats.weather; $deg = [string][char]0x00B0
+    if (-not $script:cfg.weatherCity) {
+        $uiWxIcon.Text = [string][char]0x2600; $uiWxTemp.Text = ''; $uiWxCond.Text = 'No city set'; $uiWxCity.Text = 'Tray menu > Weather city'; $uiWxHiLo.Text = ''
+        $uiWxHours.Children.Clear(); return
+    }
+    if (-not $wx -or $null -eq $wx.temp) {
+        $uiWxIcon.Text = ''; $uiWxTemp.Text = '--'; $uiWxCond.Text = $(if ($wx) { 'City not found' } else { 'Loading' + $ELL }); $uiWxCity.Text = $(if ($wx) { $wx.city } else { [string]$script:cfg.weatherCity }); $uiWxHiLo.Text = ''
+        $uiWxHours.Children.Clear(); return
+    }
+    $uiWxIcon.Text = Get-WeatherIcon $wx.code; $uiWxTemp.Text = "$($wx.temp)$deg"
+    $uiWxCond.Text = Get-WeatherText $wx.code; $uiWxCity.Text = [string]$wx.city
+    $uiWxHiLo.Text = if ($null -ne $wx.hi) { "H $($wx.hi)$deg  L $($wx.lo)$deg" } else { '' }
+    $sig = (@($wx.hours) | ForEach-Object { "$($_.h)|$($_.t)|$($_.c)" }) -join ','
+    if ($sig -ne $script:wxHoursSig) {
+        $script:wxHoursSig = $sig; $uiWxHours.Children.Clear()
+        foreach ($h in @($wx.hours)) {
+            $sp = New-Object System.Windows.Controls.StackPanel
+            foreach ($line in @(@($h.h, '#80FFFFFF', 10.5, 'Cascadia Mono, Consolas'), @((Get-WeatherIcon $h.c), '#E6FFFFFF', 13, 'Segoe UI Symbol'), @("$($h.t)$deg", '#FFFFFFFF', 12, 'Segoe UI Variable Text, Segoe UI'))) {
+                $tb = New-Object System.Windows.Controls.TextBlock
+                $tb.Text = [string]$line[0]; $tb.Foreground = New-Brush $line[1]; $tb.FontSize = $line[2]; $tb.HorizontalAlignment = 'Center'
+                $tb.FontFamily = New-Object System.Windows.Media.FontFamily $line[3]
+                [void]$sp.Children.Add($tb)
+            }
+            [void]$uiWxHours.Children.Add($sp)
+        }
+    }
+}
+$script:wxHoursSig = ''
 function Fill-StatsPanel {
     if (-not $script:statLines) {
         $script:statGrid = New-Object System.Windows.Controls.Grid
@@ -2055,12 +2119,7 @@ function Fill-StatsPanel {
             cpu = New-StatCell 'CPU' 0 0; gpu = New-StatCell 'GPU' 1 0
             ram = New-StatCell 'RAM' 0 1; net = New-StatCell 'NET' 1 1
         }
-        $script:statGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition))
-        $script:wxText = New-Object System.Windows.Controls.TextBlock
-        $script:wxText.Foreground = New-Brush '#CCFFFFFF'; $script:wxText.FontSize = 12; $script:wxText.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
-        $script:wxText.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'; $script:wxText.ToolTip = 'Weather data by Open-Meteo.com (CC BY 4.0)'
-        [System.Windows.Controls.Grid]::SetRow($script:wxText, 2); [System.Windows.Controls.Grid]::SetColumnSpan($script:wxText, 2)
-        [void]$script:statGrid.Children.Add($script:wxText)
+
     }
     $st = $script:stats; $L = $script:statLines; $deg = [string][char]0x00B0
     $t = if ($null -ne $st.cpu) { "$($st.cpu)%" } else { '--' }; if ($null -ne $st.cpuTemp) { $t += " $($st.cpuTemp)$deg" }
@@ -2072,9 +2131,7 @@ function Fill-StatsPanel {
     $t = if ($gb) { '{0}/{1} GB' -f $gb[0].ToString('0.0', $INV), $gb[1].ToString('0', $INV) } else { '--' }
     Set-StatLine $L.ram $(if ($null -ne $st.ram -and $st.ram -ge 0) { $st.ram / 100 }) $t
     Set-StatLine $L.net $null ([string][char]0x2193 + (Format-Rate $st.down) + ' ' + [char]0x2191 + (Format-Rate $st.up))
-    $wx = $st.weather
-    $script:wxText.Visibility = if ($script:cfg.weatherCity) { 'Visible' } else { 'Collapsed' }
-    $script:wxText.Text = if (-not $wx) { 'Weather' + $ELL } elseif ($null -eq $wx.temp) { $wx.city } else { "$($wx.temp)$([char]0x00B0)  $(Get-WeatherText $wx.code)  $DOT  $($wx.city)" }
+
 }
 # ---- system stats ---------------------------------------------------------
 # Collected on a background runspace every 2 s, so slow sources (performance counters,
@@ -2192,9 +2249,18 @@ $statsPs = [PowerShell]::Create()
                 }
                 if ($wxGeo) {
                     $inv = [Globalization.CultureInfo]::InvariantCulture
-                    $url = 'https://api.open-meteo.com/v1/forecast?current=temperature_2m,weather_code&latitude=' + $wxGeo.lat.ToString($inv) + '&longitude=' + $wxGeo.lon.ToString($inv)
-                    $cur = ($wc.DownloadString($url) | ConvertFrom-Json).current
-                    $st.weather = @{ temp = [int][math]::Round([double]$cur.temperature_2m); code = [int]$cur.weather_code; city = $wxGeo.name }
+                    $url = 'https://api.open-meteo.com/v1/forecast?current=temperature_2m,weather_code&hourly=temperature_2m,weather_code' +
+                           '&daily=temperature_2m_max,temperature_2m_min&forecast_days=2&timezone=auto&latitude=' + $wxGeo.lat.ToString($inv) + '&longitude=' + $wxGeo.lon.ToString($inv)
+                    $res = $wc.DownloadString($url) | ConvertFrom-Json
+                    $cur = $res.current
+                    # the next five hours, from the hour after the current one (times are the city's local time)
+                    $hours = @(); $nowLocal = [DateTime]::ParseExact([string]$cur.time, "yyyy-MM-dd'T'HH:mm", $inv)
+                    for ($i = 0; $i -lt @($res.hourly.time).Count -and $hours.Count -lt 5; $i++) {
+                        $ht = [DateTime]::ParseExact([string]$res.hourly.time[$i], "yyyy-MM-dd'T'HH:mm", $inv)
+                        if ($ht -gt $nowLocal) { $hours += @{ h = $ht.ToString('HH:mm'); t = [int][math]::Round([double]$res.hourly.temperature_2m[$i]); c = [int]$res.hourly.weather_code[$i] } }
+                    }
+                    $st.weather = @{ temp = [int][math]::Round([double]$cur.temperature_2m); code = [int]$cur.weather_code; city = $wxGeo.name
+                                     hi = [int][math]::Round([double]$res.daily.temperature_2m_max[0]); lo = [int][math]::Round([double]$res.daily.temperature_2m_min[0]); hours = $hours }
                 } else { $st.weather = @{ temp = $null; code = -1; city = "$city (not found)" } }
             } catch { }
         }
@@ -2298,16 +2364,17 @@ function Stat-Value($key) {
         'gpu' { $v = if ($null -ne $st.gpu) { '{0,3}%' -f $st.gpu } else { ' --' }; if ($null -ne $st.gpuTemp) { $v += (' {0,3}' -f $st.gpuTemp) + [char]0x00B0 }; $v }
         'ram' { if ($null -ne $st.ram -and $st.ram -ge 0) { '{0,3}%' -f $st.ram } else { ' --' } }
         'net' { [string][char]0x2193 + (Format-Rate $st.down).PadLeft(5) + ' ' + [char]0x2191 + (Format-Rate $st.up).PadLeft(5) }
+        'weather' { $wx = $st.weather; if ($wx -and $null -ne $wx.temp) { ('{0,3}' -f $wx.temp) + [char]0x00B0 + ' ' + (Get-WeatherIcon $wx.code) } else { ' --' } }
     }
 }
 function Render-Stats {
-    $keys = @(([string]$script:cfg.statsItems).ToLower() -split '[,\s]+' | Where-Object { @('cpu', 'gpu', 'ram', 'net') -contains $_ })
+    $keys = @(([string]$script:cfg.statsItems).ToLower() -split '[,\s]+' | Where-Object { @('cpu', 'gpu', 'ram', 'net', 'weather') -contains $_ })
     $sig = $keys -join ','
     if ($sig -ne $script:statKeys) {
         $script:statKeys = $sig; $uiStatsRow.Children.Clear(); $script:statVals = @{}
         foreach ($k in $keys) {
             $l = New-Object System.Windows.Controls.TextBlock
-            $l.Text = $k.ToUpper(); $l.Foreground = New-Brush '#80FFFFFF'; $l.FontSize = 11; $l.FontWeight = 'SemiBold'
+            $l.Text = if ($k -eq 'weather') { '' } else { $k.ToUpper() }; $l.Foreground = New-Brush '#80FFFFFF'; $l.FontSize = 11; $l.FontWeight = 'SemiBold'
             $l.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'
             $l.VerticalAlignment = 'Center'
             $l.Margin = New-Object System.Windows.Thickness($(if ($uiStatsRow.Children.Count) { 14 } else { 0 }), 0, 5, 0)
@@ -2611,6 +2678,34 @@ $miTest.Add_Click({ Start-Test })
 [void]$menu.Items.Add((New-Toggle 'Click through (hold Ctrl to use)' 'clickThrough'))
 [void]$menu.Items.Add((New-Toggle 'Compact notch in fullscreen' 'fullscreenNotch'))
 [void]$menu.Items.Add((New-Toggle 'System stats when idle' 'stats'))
+# Idle stats: which ones show in the pill while nothing else is on (kept in this order)
+$miIdle = New-Object System.Windows.Forms.ToolStripMenuItem 'Idle stats'
+foreach ($pair in @(@('cpu', 'CPU'), @('gpu', 'GPU'), @('ram', 'RAM'), @('net', 'Network speed'), @('weather', 'Weather'))) {
+    $it = New-Object System.Windows.Forms.ToolStripMenuItem $pair[1]; $it.Tag = $pair[0]
+    $it.Add_Click({
+        $all = 'cpu', 'gpu', 'ram', 'net', 'weather'
+        $cur = @(([string]$script:cfg.statsItems).ToLower() -split '[,\s]+' | Where-Object { $all -contains $_ })
+        $k = [string]$this.Tag
+        $cur = if ($cur -contains $k) { @($cur | Where-Object { $_ -ne $k }) } else { @($all | Where-Object { $cur -contains $_ -or $_ -eq $k }) }
+        $script:cfg.statsItems = $cur -join ','
+        if ($k -eq 'weather' -and $cur -contains 'weather' -and -not $script:cfg.weatherCity) { Ask-WeatherCity }
+        Save-Config; Update-Island
+    })
+    [void]$miIdle.DropDownItems.Add($it)
+}
+$miIdle.Add_DropDownOpening({
+    $cur = @(([string]$script:cfg.statsItems).ToLower() -split '[,\s]+')
+    foreach ($it in $miIdle.DropDownItems) { $it.Checked = $cur -contains [string]$it.Tag }
+})
+[void]$menu.Items.Add($miIdle)
+function Ask-WeatherCity {
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    $c = [Microsoft.VisualBasic.Interaction]::InputBox('City for the weather (e.g. Istanbul). Type off to turn it off.', 'Windows Notch', [string]$script:cfg.weatherCity)
+    if ($c) { $script:cfg.weatherCity = $(if ($c.Trim() -eq 'off') { '' } else { $c.Trim() }); $script:stats.weatherCity = $script:cfg.weatherCity; Save-Config; Update-Island }
+}
+$miCity = New-Object System.Windows.Forms.ToolStripMenuItem 'Weather city...'
+$miCity.Add_Click({ Ask-WeatherCity })
+[void]$menu.Items.Add($miCity)
 $miPopups = New-Object System.Windows.Forms.ToolStripMenuItem 'Popups'
 foreach ($pair in @(@('Show popups', 'popups'), @('Devices', 'popupDevices'), @('Volume and brightness', 'popupVolume'),
                     @('Sound output', 'popupAudioOutput'), @('Caps Lock / Num Lock', 'popupLocks'), @('Battery and charger', 'popupBattery'),
