@@ -1668,19 +1668,19 @@ $script:inboxDir = Join-Path $StateDir 'inbox'; $script:inboxAt = 0
 New-Item -ItemType Directory -Force -Path $script:inboxDir | Out-Null
 
 # ---- timer / Pomodoro (tray menu > Timer) -----------------------------------
-$script:timer = $null
+$script:countdown = $null
 function Start-Timer([double]$minutes, [string]$label, [string]$phase = '') {
     $now = Get-Now
-    $script:timer = @{ start = $now; end = $now + [int64]($minutes * 60000); label = $label; phase = $phase }
+    $script:countdown = @{ start = $now; end = $now + [int64]($minutes * 60000); label = $label; phase = $phase }
     Update-Island
 }
-function Stop-Timer { $script:timer = $null; Update-Island }
+function Stop-Timer { $script:countdown = $null; Update-Island }
 # The running timer as a popup-shaped view (no time limit), or $null; handles it running out
 function Get-TimerView($now) {
-    $tm = $script:timer
+    $tm = $script:countdown
     if (-not $tm) { return $null }
     if ($now -ge $tm.end) {
-        $script:timer = $null
+        $script:countdown = $null
         Play-Chime 'done'
         if ($tm.phase -eq 'focus') {
             Show-Popup 'timer' 0xE916 'Focus done' "Break for $($script:cfg.breakMinutes) min" '#34C759' 6
@@ -2351,6 +2351,7 @@ function Update-Island {
         elseif ($work.Count  -gt 0 -and $script:cfg.showWorking) { $pick = $work[0]; $mode = 'working' }
 
         Poll-Events $now
+        $tv = Get-TimerView $now   # also notices when it runs out, whatever is showing
         $pop = Get-Popup $now
 
         $fs = Get-Fullscreen
@@ -2359,7 +2360,7 @@ function Update-Island {
             if ($mode -eq 'needs') { Show-Notch $mode $pick $now $fs }
             elseif ($pop) { Show-PopupNotch $pop $fs }
             elseif ($pick) { Show-Notch $mode $pick $now $fs }
-            elseif ($tv = Get-TimerView $now) { Set-NotchContent $tv.color "$($tv.title)  $($tv.value)" $tv.glyph; Show-NotchAt $fs }
+            elseif ($tv) { Set-NotchContent $tv.color "$($tv.title)  $($tv.value)" $tv.glyph; Show-NotchAt $fs }
             elseif ($script:cfg.fullscreenClock) { Set-NotchContent '#E6FFFFFF' ((Get-Date).ToShortTimeString()) ([char]0xE823); Show-NotchAt $fs }
             else { Hide-Notch }
             return
@@ -2368,7 +2369,7 @@ function Update-Island {
 
         # a notice takes over for a few seconds (but never over "needs you", or while expanded)
         if ($pop -and $mode -ne 'needs' -and -not $script:hover) { Show-PopupView $pop $now; return }
-        if (-not $pick -and ($tv = Get-TimerView $now)) { Show-PopupView $tv $now; return }
+        if (-not $pick -and $tv) { Show-PopupView $tv $now; return }
 
         if (-not $pick) {
             $m = $script:music
@@ -2699,10 +2700,10 @@ function Apply-Settings {
     Update-Island
 }
 function Restart-Island {
+    # Cleanup can fail without stopping the relaunch, so the island never just disappears
+    try { foreach ($t in $timer, $musicTimer, $blinkTimer, $watchTimer, $compTimer, $blurTimer, $hoverTimer) { if ($t -is [System.Windows.Threading.DispatcherTimer]) { $t.Stop() } } } catch { }
+    try { $script:stats.on = $false; $tray.Visible = $false; $tray.Dispose() } catch { }
     try {
-        foreach ($t in $timer, $musicTimer, $blinkTimer, $watchTimer, $compTimer, $blurTimer, $hoverTimer) { if ($t) { $t.Stop() } }
-        $script:stats.on = $false
-        $tray.Visible = $false; $tray.Dispose()
         try { $script:mutex.ReleaseMutex(); $script:mutex.Dispose() } catch { }
         $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
         Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:SelfPath`"" -WindowStyle Hidden

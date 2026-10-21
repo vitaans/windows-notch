@@ -52,6 +52,8 @@
     "calendarMinutes":  5,
     "timerMinutes":  25,
     "breakMinutes":  5,
+    "sleepAfterMinutes":  5,
+    "weatherCity":  "",
     "stats":  true,
     "statsItems":  "cpu,gpu,ram,net",
     "mascot":  "Pixel Cat",
