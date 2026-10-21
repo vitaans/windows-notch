@@ -24,11 +24,18 @@ Double-click **Install.cmd**, then restart any open Claude Code sessions.
 
 ## Updating
 
-Nothing to do. Replace files in this folder and the island notices within a few
-seconds: a new `scripts\ClaudeIsland.ps1` restarts it automatically (only if the
-new file has no errors), a new hook script is used on Claude's next step, and
-`settings.json` and companion images apply live.
+The island checks GitHub once a day for a newer release (tray menu → **Check for updates** checks
+now). When there is one, it says so; click the notice or tray menu → **Install update**. Your
+`settings.json`, your own characters in `custom images` and `state` are kept, new settings are
+filled in, and the island restarts by itself. Turn the daily check off with `updateCheck`.
 
+If you cloned the repo, `git pull` works too: a changed `scripts\ClaudeIsland.ps1` restarts the
+island automatically, and `settings.json` and companion images apply live.
+
+**Publishing a new version** (maintainers): commit your changes, then run `publish 1.1.0` (or
+`publish 1.1.0 "what changed"`). It sets `VERSION`, tags, pushes and creates the GitHub Release
+with a zip. It needs the GitHub CLI (`winget install GitHub.cli`, then `gh auth login`).
+The repo has to be public for other people's islands to see releases.
 ## Folder layout
 
 | Path | What it is |
@@ -134,6 +141,8 @@ Options added by future updates are filled in automatically.
 | `popupGitHub` | `true` | Your open pull requests: checks passed / failed, approved, changes requested. Needs the [GitHub CLI](https://cli.github.com) installed and signed in (`gh auth login`) |
 | `sleepAfterMinutes` | `5` | The companion falls asleep after this long without mouse or keyboard (0 = never) |
 | `weatherCity` | `""` | A city (e.g. `Istanbul`) to show the weather in the stats panel, from Open-Meteo (free, no account) |
+| `updateCheck` | `true` | Look for a newer release once a day (nothing installs without your click) |
+| `updateRepo` | `kilicaslanalper/windows-notch` | The GitHub repo releases come from |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
 | `statsItems` | `cpu,gpu,ram,net` | Which stats to show, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed) |
 | `mascot` | `pearl` | `off`, a blob color (`pearl`, `lemon`, `peach`, `rose`, `lilac`, `sky`, `mint`) or a folder name in `custom images` |
