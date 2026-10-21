@@ -78,8 +78,8 @@ $script:cfg = [ordered]@{
     clickThrough       = $true      # clicks go through the pill to what's under it; hold Ctrl to hover/click the pill
     peekOpacity        = 0.25       # with click-through on, the pill fades to this while the cursor is over it (1 = no fade)
     fullscreenNotch    = $true      # while a fullscreen app is in front, swap the pill for a slim notch at the top edge
-    expandedWidth      = 360        # size of the expanded island, so its buttons are always in the same place
-    expandedHeight     = 250
+    expandedWidth      = 400        # size of the expanded island, so its buttons are always in the same place
+    expandedHeight     = 0          # 0 = just tall enough for the tallest panel; set a number to make it taller
     expandedOpacity    = 0.92       # background darkness while expanded (0 to 1), so text stays readable
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, in the order you want them
@@ -398,21 +398,6 @@ try {
           </Grid>
         </DockPanel>
 
-        <!-- Panel buttons, shown while expanded: music on the left, stats on the right. Right under the
-             header, so they are always in the same place whichever panel is open -->
-        <Grid x:Name="Tools" Visibility="Collapsed" Margin="2,10,2,0">
-          <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                  HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
-            <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-          <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                  HorizontalAlignment="Right" Cursor="Hand" ToolTip="System stats">
-            <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                       Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-        </Grid>
-
         <!-- Claude sessions (hover) -->
         <StackPanel x:Name="Details" Visibility="Collapsed">
           <StackPanel Margin="4,10,0,2">
@@ -475,7 +460,24 @@ try {
           </StackPanel>
         </StackPanel>
 
+        <!-- room for the panel buttons below -->
+        <Border x:Name="ToolsSpace" Height="42" Visibility="Collapsed"/>
       </StackPanel>
+
+      <!-- Panel buttons, shown while expanded: music on the left, stats on the right. Pinned to the
+           bottom of the (fixed-size) expanded island, so they never move -->
+      <Grid x:Name="Tools" Visibility="Collapsed" VerticalAlignment="Bottom" Margin="12,0,16,10">
+        <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
+          <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                     Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                HorizontalAlignment="Right" Cursor="Hand" ToolTip="System stats">
+          <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                     Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+      </Grid>
       </Grid>
       </Grid>
     </Border>
@@ -497,7 +499,7 @@ foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText'
                'ProgGrid','ProgTrack','ProgFill','TimeGrid','PosText','DurText','BtnPrev','BtnPlay','BtnNext','PlayGlyph',
                'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
                'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
-               'StatsPanel','StatLines','Tools','BtnMusicPanel','BtnStatsPanel') {
+               'StatsPanel','StatLines','Tools','ToolsSpace','BtnMusicPanel','BtnStatsPanel') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -1038,6 +1040,21 @@ function Shrink-Out($el) {
 # taller. Shrinking both ways: shorter first, then narrower. In-out sine throughout.
 $script:sizeTarget = ''
 $script:sizeHover = $false
+# Expanded height: the header plus the tallest of the music and stats panels (filled or not),
+# so switching panels or data arriving never resizes the island.
+function Get-FixedHeight {
+    if (-not $script:statLines) { Fill-StatsPanel }
+    $els = @($uiDetails, $uiMusicDetails, $uiStatsPanel, $uiMPanelInfo, $uiProgGrid, $uiTimeGrid)
+    $was = @($els | ForEach-Object { $_.Visibility })
+    $inf = New-Object System.Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)
+    $uiDetails.Visibility = 'Collapsed'; $uiStatsPanel.Visibility = 'Collapsed'
+    foreach ($e in $uiMusicDetails, $uiMPanelInfo, $uiProgGrid, $uiTimeGrid) { $e.Visibility = 'Visible' }
+    $uiInner.Measure($inf); $h1 = $uiInner.DesiredSize.Height
+    $uiMusicDetails.Visibility = 'Collapsed'; $uiStatsPanel.Visibility = 'Visible'
+    $uiInner.Measure($inf); $h2 = $uiInner.DesiredSize.Height
+    for ($i = 0; $i -lt $els.Count; $i++) { $els[$i].Visibility = $was[$i] }
+    [math]::Ceiling([math]::Max($h1, $h2))
+}
 function Sync-Size {
     $hoverChanged = ($script:hover -ne $script:sizeHover)
     $script:sizeHover = $script:hover
@@ -1053,7 +1070,7 @@ function Sync-Size {
     if ($script:hover) {
         # expanded: one fixed size (grown only if something doesn't fit), so the buttons stay put
         $w = [math]::Max($w, [math]::Ceiling((Clamp $script:cfg.expandedWidth 208 800)))
-        $h = [math]::Max($h, [math]::Ceiling((Clamp $script:cfg.expandedHeight 0 800)))
+        $h = [math]::Max($h, [math]::Max((Get-FixedHeight), [math]::Ceiling((Clamp $script:cfg.expandedHeight 0 800))))
     }
     # (content stretches with the host, so text and companion move with the pill's edges)
     $key = "$w,$h"
@@ -1459,6 +1476,7 @@ function Update-Panels($view, $sessions, $now) {
     if ($script:hover -and $want -eq 'music') { Fill-MusicPanel $view $now; Grow-In $uiMusicDetails } else { Shrink-Out $uiMusicDetails }
     if ($script:hover -and $want -eq 'stats') { Fill-StatsPanel; Grow-In $uiStatsPanel } else { Shrink-Out $uiStatsPanel }
     if ($script:hover) { Grow-In $uiTools } else { Shrink-Out $uiTools }
+    $uiToolsSpace.Visibility = if ($script:hover) { 'Visible' } else { 'Collapsed' }
     $uiBtnMusicPanel.Background = New-Brush $(if ($want -eq 'music') { '#4DFFFFFF' } else { '#1AFFFFFF' })
     $uiBtnStatsPanel.Background = New-Brush $(if ($want -eq 'stats') { '#4DFFFFFF' } else { '#1AFFFFFF' })
 }
@@ -1773,7 +1791,7 @@ function Update-Island {
             return
         }
 
-        $uiClaudeRow.Visibility = 'Visible'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Collapsed'; $uiMusicDetails.Visibility = 'Collapsed'; $uiMusicDetails.Tag = ''
+        $uiClaudeRow.Visibility = 'Visible'; $uiMusicRow.Visibility = 'Collapsed'; $uiStatsRow.Visibility = 'Collapsed'
         Set-Look $mode
         $proj = [string]$pick.project
         switch ($mode) {
