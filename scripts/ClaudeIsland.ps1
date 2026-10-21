@@ -1463,31 +1463,48 @@ function Show-Music($m, $now) {
 # While expanded, round buttons open a panel: music and volume (left), system stats (right).
 # Without a choice, each view opens its own: Claude shows sessions, music shows its controls.
 # Like Vorssaint's notch shelf buttons. $script:panel is '', 'none', 'music' or 'stats'.
-$script:panel = ''; $script:holdUntil = 0
+$script:panel = ''; $script:holdUntil = 0; $script:lastWant = $null; $script:switchAt = 0
 function Get-WantPanel($view) {
     if ($script:panel -eq 'none') { return '' }
     if ($script:panel) { return $script:panel }
     switch ($view) { 'music' { 'music' } 'claude' { 'sessions' } default { '' } }
 }
+# Switching panels while expanded swaps them in place (the island keeps its size): the old one
+# goes at once and the new one fades in where it stands, instead of sliding up from below.
+function Show-Now($el) {
+    $el.Tag = 'open'; $el.Visibility = 'Visible'
+    Animate $el $OpacityProp 1 120 $null 0
+}
+function Hide-Now($el) { $el.BeginAnimation($OpacityProp, $null); $el.Visibility = 'Collapsed'; $el.Tag = '' }
 function Update-Panels($view, $sessions, $now) {
     if (-not $script:hover) { $script:panel = '' }
     Set-Dark $script:hover
     $want = Get-WantPanel $view
-    if ($script:hover -and $want -eq 'sessions') { Render-Details $sessions $now } else { Shrink-Out $uiDetails }
-    if ($script:hover -and $want -eq 'music') { Fill-MusicPanel $view $now; Grow-In $uiMusicDetails } else { Shrink-Out $uiMusicDetails }
-    if ($script:hover -and $want -eq 'stats') { Fill-StatsPanel; Grow-In $uiStatsPanel } else { Shrink-Out $uiStatsPanel }
+    $swap = $script:hover -and $null -ne $script:lastWant -and $want -ne $script:lastWant
+    $script:lastWant = if ($script:hover) { $want } else { $null }
+    $panels = [ordered]@{ sessions = $uiDetails; music = $uiMusicDetails; stats = $uiStatsPanel }
+    if ($swap) { foreach ($k in $panels.Keys) { if ($k -ne $want) { Hide-Now $panels[$k] } } }
+    if ($script:hover -and $want -eq 'sessions') { Render-Details $sessions $now } elseif (-not $swap) { Shrink-Out $uiDetails }
+    if ($script:hover -and $want -eq 'music') { Fill-MusicPanel $view $now; if (-not $swap) { Grow-In $uiMusicDetails } } elseif (-not $swap) { Shrink-Out $uiMusicDetails }
+    if ($script:hover -and $want -eq 'stats') { Fill-StatsPanel; if (-not $swap) { Grow-In $uiStatsPanel } } elseif (-not $swap) { Shrink-Out $uiStatsPanel }
+    if ($swap -and $want -and ($want -ne 'sessions' -or $uiRows.Children.Count)) { Show-Now $panels[$want] }
     if ($script:hover) { Grow-In $uiTools } else { Shrink-Out $uiTools }
     $uiToolsSpace.Visibility = if ($script:hover) { 'Visible' } else { 'Collapsed' }
     $uiBtnMusicPanel.Background = New-Brush $(if ($want -eq 'music') { '#4DFFFFFF' } else { '#1AFFFFFF' })
     $uiBtnStatsPanel.Background = New-Brush $(if ($want -eq 'stats') { '#4DFFFFFF' } else { '#1AFFFFFF' })
 }
-function Toggle-Panel($which) {
-    $script:panel = if ((Get-WantPanel $script:viewKind) -eq $which) { 'none' } else { $which }
-    $script:holdUntil = (Get-Now) + 1500   # the pill resizes under the cursor; don't treat that as leaving
+# A button opens its panel; pressing the open panel's button again does nothing, and clicks
+# while a switch is still settling are ignored.
+function Open-Panel($which) {
+    $now = Get-Now
+    if ((Get-WantPanel $script:viewKind) -eq $which -or $now -lt $script:switchAt + 300) { return }
+    $script:panel = $which
+    $script:switchAt = $now
+    $script:holdUntil = $now + 1500   # don't treat anything moving under the cursor as leaving
     Update-Island
 }
-$uiBtnMusicPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Toggle-Panel 'music' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
-$uiBtnStatsPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Toggle-Panel 'stats' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
+$uiBtnMusicPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'music' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
+$uiBtnStatsPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'stats' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
 
 function Fill-MusicPanel($view, $now) {
     $m = $script:music
