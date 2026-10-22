@@ -150,8 +150,16 @@ Options added by future updates are filled in automatically.
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
 
 **Expanded island**: hover it (Ctrl+click first when click-through is on) to expand it. The round
-buttons under the top row stay in the same place: the left one opens music and volume controls, the middle one the weather (now and the next hours) (click or drag the bar, scroll to adjust, the
-speaker mutes); the one on the right opens system stats. Click a button again to close its panel.
+buttons under the top row stay in the same place, left to right: music and volume controls (click or
+drag the bar, scroll to adjust, the speaker mutes), the weather (now and the next hours), system
+stats, and notifications.
+
+**Notifications**: the bell keeps a list of past notices, newest first: Claude tasks finishing or
+needing your input, downloads, screenshots, devices, network, battery, GitHub and your own `notch`
+notices (volume, brightness, Caps Lock and clipboard ones are left out). A red dot on the bell means
+something new arrived. The list scrolls inside the panel, click a download or screenshot to open it,
+and **Clear** empties it. It's kept in `state
+otifications.json` (the last 60).
 
 **System stats**: CPU and GPU load, RAM use and network speed work out of the box.
 Temperatures need [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)

@@ -500,23 +500,37 @@ try {
           </Grid>
         </DockPanel>
 
-        <!-- Panel buttons, shown while expanded: music on the left, stats on the right. Right under the
-             top row, so they stay in the same place whatever panel is open -->
+        <!-- Panel buttons, shown while expanded, spread evenly: music, weather, stats, notifications.
+             Right under the top row, so they stay in the same place whatever panel is open -->
         <Grid x:Name="Tools" Visibility="Collapsed" Margin="2,10,2,0">
-          <Border x:Name="BtnMusicPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                  HorizontalAlignment="Left" Cursor="Hand" ToolTip="Music and volume">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <Border x:Name="BtnMusicPanel" Grid.Column="0" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  Cursor="Hand" ToolTip="Music and volume">
             <TextBlock Text="&#xE8D6;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
                        Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
-          <Border x:Name="BtnWeatherPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                  HorizontalAlignment="Center" Cursor="Hand" ToolTip="Weather">
+          <Border x:Name="BtnWeatherPanel" Grid.Column="2" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  Cursor="Hand" ToolTip="Weather">
             <TextBlock Text="&#x2600;" FontFamily="Segoe UI Symbol" FontSize="14"
                        Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
-          <Border x:Name="BtnStatsPanel" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
-                  HorizontalAlignment="Right" Cursor="Hand" ToolTip="System stats">
+          <Border x:Name="BtnStatsPanel" Grid.Column="4" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  Cursor="Hand" ToolTip="System stats">
             <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
                        Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <Border x:Name="BtnNotifPanel" Grid.Column="6" Width="30" Height="30" CornerRadius="15" Background="#1AFFFFFF"
+                  Cursor="Hand" ToolTip="Notifications">
+            <Grid>
+              <TextBlock Text="&#xEA8F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                         Foreground="#E6FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <!-- unread dot -->
+              <Ellipse x:Name="NotifDot" Width="7" Height="7" Fill="#FF453A" HorizontalAlignment="Right" VerticalAlignment="Top"
+                       Margin="0,5,5,0" Visibility="Collapsed"/>
+            </Grid>
           </Border>
         </Grid>
 
@@ -603,6 +617,25 @@ try {
           </StackPanel>
         </StackPanel>
 
+        <!-- Notifications (bell button): past popups and Claude events, newest first. The list
+             scrolls inside the same height as the music panel, so the island doesn't grow -->
+        <StackPanel x:Name="NotifPanel" Visibility="Collapsed">
+          <StackPanel Margin="2,12,2,0" MinWidth="250">
+            <Border Height="1" Background="#1FFFFFFF" Margin="0,0,0,6"/>
+            <DockPanel Margin="0,0,0,4">
+              <Border x:Name="BtnNotifClear" DockPanel.Dock="Right" CornerRadius="9" Padding="8,1,8,2" Background="#01FFFFFF" Cursor="Hand">
+                <TextBlock Text="Clear" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="11"/>
+              </Border>
+              <TextBlock Text="Notifications" Foreground="#80FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
+                         FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </DockPanel>
+            <ScrollViewer x:Name="NotifScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
+                          CanContentScroll="False" Height="96">
+              <StackPanel x:Name="NotifRows"/>
+            </ScrollViewer>
+          </StackPanel>
+        </StackPanel>
+
         <Border x:Name="ToolsSpace" Height="4" Visibility="Collapsed"/>
       </StackPanel>
 
@@ -629,7 +662,8 @@ foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText'
                'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
                'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
                'StatsPanel','StatLines','Tools','ToolsSpace','WeatherPanel','WxIcon','WxTemp','WxHiLo','WxCond','WxCity','WxHours','BtnWeatherPanel',
-               'Zzz','PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel') {
+               'Zzz','PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel',
+               'BtnNotifPanel','NotifDot','NotifPanel','BtnNotifClear','NotifScroll','NotifRows') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -1232,7 +1266,7 @@ function Sync-Size {
     $script:sizeHover = $script:hover
     $ms = if ($hoverChanged) { Get-Ms 'expandMs' } else { Get-Ms 'resizeMs' }
     # Measure the natural size, counting panels that are on their way out as already gone
-    $closing = @($uiDetails, $uiMusicDetails, $uiStatsPanel, $uiWeatherPanel, $uiTools | Where-Object { [string]$_.Tag -eq 'closing' })
+    $closing = @($uiDetails, $uiMusicDetails, $uiStatsPanel, $uiWeatherPanel, $uiNotifPanel, $uiTools | Where-Object { [string]$_.Tag -eq 'closing' })
     foreach ($c in $closing) { $c.Visibility = 'Collapsed' }
     $uiInner.Width = [double]::NaN
     $uiInner.Measure((New-Object System.Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)))
@@ -1325,7 +1359,7 @@ function Hide-Pill {
     if (-not $script:shown) { return }
     $script:shown = $false
     $script:hover = $false
-    foreach ($p in $uiDetails, $uiMusicDetails, $uiStatsPanel, $uiWeatherPanel, $uiTools) { $p.Visibility = 'Collapsed'; $p.Tag = '' }
+    foreach ($p in $uiDetails, $uiMusicDetails, $uiStatsPanel, $uiWeatherPanel, $uiNotifPanel, $uiTools) { $p.Visibility = 'Collapsed'; $p.Tag = '' }
     $script:panel = ''; Set-Dark $false
     $uiPill.IsHitTestVisible = $false
     $ease = New-Object System.Windows.Media.Animation.CubicEase
@@ -1636,8 +1670,46 @@ function Show-Music($m, $now) {
 # key (like the volume bar) updates in place. They wait while the island is expanded.
 $script:popup = $null; $script:popColor = '#FFFFFF'
 $script:events = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
+
+# Notifications log: every popup worth keeping (not volume, brightness, locks or clipboard) and
+# every Claude event, newest first, kept across restarts in state\notifications.json.
+$script:notifPath = Join-Path $StateDir 'notifications.json'
+$script:notifs = New-Object System.Collections.ArrayList
+$script:notifUnread = $false; $script:notifSig = ''
+try {
+    if (Test-Path $script:notifPath) {
+        $saved = [IO.File]::ReadAllText($script:notifPath) | ConvertFrom-Json
+        foreach ($n in @($saved.items)) { if ($n) { [void]$script:notifs.Add($n) } }
+        $script:notifUnread = [bool]$saved.unread
+    }
+} catch { Write-Log ("notifications: " + $_.Exception.Message) }
+function Save-Notifs {
+    try { [IO.File]::WriteAllText($script:notifPath, (@{ unread = $script:notifUnread; items = @($script:notifs) } | ConvertTo-Json -Depth 4 -Compress)) } catch { }
+}
+function Add-Notif([string]$key, $glyph, [string]$title, [string]$sub = '', [string]$color = '#FFFFFF', $open = $null) {
+    if (@('volume', 'brightness', 'caps', 'num', 'clip') -contains $key) { return }
+    $now = Get-Now
+    $last = if ($script:notifs.Count) { $script:notifs[0] } else { $null }
+    if ($last -and $last.key -eq $key -and $last.title -eq $title -and $last.sub -eq $sub -and $now - [int64]$last.at -lt 5000) { return }
+    if ($open -is [array]) { $open = @($open | ForEach-Object { [string]$_ }) } elseif ($null -ne $open) { $open = [string]$open }
+    $g = [string]$(if ($glyph -is [int]) { [char]$glyph } else { $glyph })
+    $script:notifs.Insert(0, [pscustomobject]@{ key = $key; glyph = $g; title = $title; sub = $sub; color = $color; at = $now; open = $open })
+    while ($script:notifs.Count -gt 60) { $script:notifs.RemoveAt($script:notifs.Count - 1) }
+    if (-not ($script:hover -and $script:panel -eq 'notifs')) { $script:notifUnread = $true }
+    Save-Notifs
+}
+# What clicking a notice does: open a file, show it in Explorer, open a link, or install the update
+function Invoke-Open($open) {
+    try {
+        if ($open -eq '::update') { Start-Update }
+        elseif ($open -is [array]) { Start-Process -FilePath ([string]$open[0]) -ArgumentList ([string]$open[1]) }
+        else { Start-Process -FilePath ([string]$open) }
+    } catch { Write-Log ("open: " + $_.Exception.Message) }
+}
+
 function Show-Popup([string]$key, $glyph, [string]$title, [string]$sub = '', [string]$color = '#FFFFFF',
                     [double]$seconds = 0, $bar = $null, [string]$value = '', $image = $null, $open = $null) {
+    Add-Notif $key $glyph $title $sub $color $open
     if (-not $script:cfg.popups) { return }
     if ($seconds -le 0) { $seconds = Clamp $script:cfg.popupSeconds 1 30 }
     $now = Get-Now
@@ -1957,13 +2029,16 @@ function Update-Panels($view, $sessions, $now) {
     $want = Get-WantPanel $view
     $swap = $script:hover -and $null -ne $script:lastWant -and $want -ne $script:lastWant
     $script:lastWant = if ($script:hover) { $want } else { $null }
-    $panels = [ordered]@{ sessions = $uiDetails; music = $uiMusicDetails; stats = $uiStatsPanel; weather = $uiWeatherPanel }
+    $panels = [ordered]@{ sessions = $uiDetails; music = $uiMusicDetails; stats = $uiStatsPanel; weather = $uiWeatherPanel; notifs = $uiNotifPanel }
     if ($swap) { foreach ($k in $panels.Keys) { if ($k -ne $want) { Hide-Now $panels[$k] } } }
     if ($script:hover -and $want -eq 'sessions') { Render-Details $sessions $now } elseif (-not $swap) { Shrink-Out $uiDetails }
     if ($script:hover -and $want -eq 'music') { Fill-MusicPanel $view $now; if (-not $swap) { Grow-In $uiMusicDetails } } elseif (-not $swap) { Shrink-Out $uiMusicDetails }
     if ($script:hover -and $want -eq 'stats') { Fill-StatsPanel; if (-not $swap) { Grow-In $uiStatsPanel } } elseif (-not $swap) { Shrink-Out $uiStatsPanel }
     if ($script:hover -and $want -eq 'weather') { Fill-WeatherPanel; if (-not $swap) { Grow-In $uiWeatherPanel } } elseif (-not $swap) { Shrink-Out $uiWeatherPanel }
+    if ($script:hover -and $want -eq 'notifs') { Fill-NotifPanel $now; if (-not $swap) { Grow-In $uiNotifPanel } } elseif (-not $swap) { Shrink-Out $uiNotifPanel }
     if ($swap -and $want -and ($want -ne 'sessions' -or $uiRows.Children.Count)) { Show-Now $panels[$want] }
+    $uiNotifDot.Visibility = if ($script:notifUnread) { 'Visible' } else { 'Collapsed' }
+    $uiBtnNotifPanel.Background = New-Brush $(if ($want -eq 'notifs') { '#4DFFFFFF' } else { '#1AFFFFFF' })
     if ($script:hover) { Grow-In $uiTools } else { Shrink-Out $uiTools }
     $uiToolsSpace.Visibility = if ($script:hover) { 'Visible' } else { 'Collapsed' }
     $uiBtnMusicPanel.Background = New-Brush $(if ($want -eq 'music') { '#4DFFFFFF' } else { '#1AFFFFFF' })
@@ -1983,6 +2058,85 @@ function Open-Panel($which) {
 $uiBtnMusicPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'music' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
 $uiBtnWeatherPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'weather' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
 $uiBtnStatsPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'stats' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
+$uiBtnNotifPanel.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; try { Open-Panel 'notifs' } catch { Write-Log ("panel: " + $_.Exception.Message) } })
+$uiBtnNotifClear.Add_MouseEnter({ $this.Background = New-Brush '#1FFFFFFF' })
+$uiBtnNotifClear.Add_MouseLeave({ $this.Background = New-Brush '#01FFFFFF' })
+$uiBtnNotifClear.Add_MouseLeftButtonUp({
+    param($s, $e) $e.Handled = $true
+    $script:notifs.Clear(); $script:notifUnread = $false; Save-Notifs; Update-Island
+})
+
+# ---- notifications panel ----------------------------------------------------
+function Format-Ago([int64]$at, [int64]$now) {
+    $s = [math]::Max(0, ($now - $at) / 1000)
+    if ($s -lt 60) { 'now' } elseif ($s -lt 3600) { '{0}m' -f [int]($s / 60) } elseif ($s -lt 86400) { '{0}h' -f [int]($s / 3600) }
+    else { [DateTimeOffset]::FromUnixTimeMilliseconds($at).LocalDateTime.ToString('d MMM') }
+}
+# The list gets the music panel's height (measured once), so opening it never resizes the island
+$script:notifListH = 0
+function Get-NotifListHeight {
+    if ($script:notifListH -gt 0) { return $script:notifListH }
+    $inf = New-Object System.Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)
+    $els = @($uiMusicDetails, $uiMPanelInfo, $uiProgGrid, $uiTimeGrid, $uiNotifPanel)
+    $was = @($els | ForEach-Object { $_.Visibility })
+    foreach ($e in $els) { $e.Visibility = 'Visible' }
+    $uiMusicDetails.Measure($inf); $hm = $uiMusicDetails.DesiredSize.Height
+    $uiNotifScroll.Height = 0; $uiNotifPanel.Measure($inf); $hn = $uiNotifPanel.DesiredSize.Height
+    for ($i = 0; $i -lt $els.Count; $i++) { $els[$i].Visibility = $was[$i] }
+    $script:notifListH = [math]::Max(60, [math]::Floor($hm - $hn))
+    $script:notifListH
+}
+function Fill-NotifPanel($now) {
+    $uiNotifScroll.Height = Get-NotifListHeight
+    if ($script:notifUnread) { $script:notifUnread = $false; Save-Notifs }
+    $sig = "$($script:notifs.Count)|$(if ($script:notifs.Count) { $script:notifs[0].at })|$([int64]($now / 60000))"
+    if ($sig -eq $script:notifSig) { return }
+    $script:notifSig = $sig
+    $uiNotifRows.Children.Clear()
+    if (-not $script:notifs.Count) {
+        $tb = New-Object System.Windows.Controls.TextBlock
+        $tb.Text = 'No notifications yet'; $tb.Foreground = New-Brush '#66FFFFFF'; $tb.FontSize = 12; $tb.Margin = New-Object System.Windows.Thickness(0, 8, 0, 0)
+        $tb.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'; $tb.HorizontalAlignment = 'Center'
+        [void]$uiNotifRows.Children.Add($tb); return
+    }
+    foreach ($n in $script:notifs) {
+        $row = New-Object System.Windows.Controls.Border
+        $row.CornerRadius = 8; $row.Padding = New-Object System.Windows.Thickness(4, 4, 6, 4); $row.Background = New-Brush '#01FFFFFF'
+        $dp = New-Object System.Windows.Controls.DockPanel
+        $c = New-Color ([string]$n.color)
+        $icon = New-Object System.Windows.Controls.Grid; $icon.Width = 24; $icon.Height = 24; $icon.VerticalAlignment = 'Center'
+        $icon.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
+        $dot = New-Object System.Windows.Shapes.Ellipse
+        $dot.Fill = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(56, $c.R, $c.G, $c.B))
+        $g = New-Object System.Windows.Controls.TextBlock
+        $g.Text = [string]$n.glyph; $g.FontSize = 11.5; $g.Foreground = New-Object System.Windows.Media.SolidColorBrush $c
+        $g.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe Fluent Icons, Segoe MDL2 Assets'
+        $g.HorizontalAlignment = 'Center'; $g.VerticalAlignment = 'Center'
+        [void]$icon.Children.Add($dot); [void]$icon.Children.Add($g)
+        [System.Windows.Controls.DockPanel]::SetDock($icon, 'Left'); [void]$dp.Children.Add($icon)
+        $t = New-Object System.Windows.Controls.TextBlock
+        $t.Text = Format-Ago ([int64]$n.at) $now; $t.Foreground = New-Brush '#80FFFFFF'; $t.FontSize = 10.5; $t.VerticalAlignment = 'Center'
+        $t.FontFamily = New-Object System.Windows.Media.FontFamily 'Cascadia Mono, Consolas'; $t.Margin = New-Object System.Windows.Thickness(10, 0, 0, 0)
+        [System.Windows.Controls.DockPanel]::SetDock($t, 'Right'); [void]$dp.Children.Add($t)
+        $sp = New-Object System.Windows.Controls.StackPanel; $sp.VerticalAlignment = 'Center'; $sp.HorizontalAlignment = 'Left'
+        foreach ($line in @(@([string]$n.title, '#FFFFFFFF', 12, 'SemiBold'), @([string]$n.sub, '#8CFFFFFF', 11, 'Normal'))) {
+            if (-not $line[0]) { continue }
+            $tb = New-Object System.Windows.Controls.TextBlock
+            $tb.Text = $line[0]; $tb.Foreground = New-Brush $line[1]; $tb.FontSize = $line[2]; $tb.FontWeight = $line[3]
+            $tb.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe UI Variable Text, Segoe UI'; $tb.TextTrimming = 'CharacterEllipsis'; $tb.MaxWidth = 250
+            [void]$sp.Children.Add($tb)
+        }
+        [void]$dp.Children.Add($sp)
+        $row.Child = $dp
+        if ($n.open) {   # clickable, like the popup it came from
+            $row.Cursor = [System.Windows.Input.Cursors]::Hand; $row.Tag = $n.open
+            $row.Add_MouseEnter({ $this.Background = New-Brush '#14FFFFFF' })
+            $row.Add_MouseLeave({ $this.Background = New-Brush '#01FFFFFF' })
+            $row.Add_MouseLeftButtonUp({ param($s, $e) $e.Handled = $true; Invoke-Open $s.Tag })
+        }
+        [void]$uiNotifRows.Children.Add($row)
+    }
+}
 
 function Fill-MusicPanel($view, $now) {
     $m = $script:music
@@ -2433,13 +2587,27 @@ function Update-Island {
                    Sort-Object { [int64]$_.updated } -Descending)
 
         # chimes, once per event (silent on the first pass so restarts don't replay)
-        foreach ($s in $needs) { $k = "$($s.id):n:$($s.updated)"; if (-not $script:announced.ContainsKey($k)) { $script:announced[$k] = 1; if (-not $script:firstTick) { Play-Chime 'needs' } } }
+        foreach ($s in $needs) {
+            $k = "$($s.id):n:$($s.updated)"
+            if (-not $script:announced.ContainsKey($k)) {
+                $script:announced[$k] = 1
+                if (-not $script:firstTick) {
+                    Play-Chime 'needs'
+                    $msg = ([string]$s.message) -replace '^Claude needs your permission to use\s*', 'Allow '
+                    Add-Notif 'claude' 0xE783 "Needs your input $DOT $($s.project)" $msg ([string]$script:cfg.needsColor)
+                }
+            }
+        }
         foreach ($s in $done)  {
             $k = "$($s.id):d:$($s.finished)"
             if (-not $script:announced.ContainsKey($k)) {
                 $script:announced[$k] = 1
                 $secs = ([int64]$s.finished - [int64]$s.started) / 1000
-                if (-not $script:firstTick -and $secs -ge [double]$script:cfg.chimeAfterSeconds) { Play-Chime 'done' }
+                if (-not $script:firstTick) {
+                    if ($secs -ge [double]$script:cfg.chimeAfterSeconds) { Play-Chime 'done' }
+                    $extra = @((Format-Elapsed ($secs * 1000))) + (Get-SessionExtras $s)
+                    Add-Notif 'claude' 0xE73E "Task complete $DOT $($s.project)" ($extra -join "  $DOT  ") ([string]$script:cfg.doneColor)
+                }
             }
         }
         $script:firstTick = $false
@@ -2577,7 +2745,7 @@ $hoverTimer.Add_Tick({
         if ($through) {
             $over = Test-CursorOnPill 0
             Set-Peek $over
-            if ($over) { $script:hintMs += 50; if ($script:hintMs -ge 3000) { Set-Hint $true } }
+            if ($over) { $script:hintMs += 50; if ($script:hintMs -ge 2000) { Set-Hint $true } }
             else { $script:hintMs = 0; Set-Hint $false }
             $script:hoverIn = 0
             if ($script:hover) { $script:hover = $false; $script:hoverOut = 0; Update-Island }
@@ -2608,11 +2776,7 @@ $uiPill.Add_PreviewMouseLeftButtonDown({ if ($script:cfg.clickThrough) { $script
 $uiPill.Add_MouseLeftButtonUp({
     $p = $script:popup
     if ($p -and $p.open) {   # e.g. a screenshot notice: open the file
-        try {
-            if ($p.open -eq '::update') { Start-Update }
-            elseif ($p.open -is [array]) { Start-Process -FilePath ([string]$p.open[0]) -ArgumentList ([string]$p.open[1]) }
-            else { Start-Process -FilePath ([string]$p.open) }
-        } catch { Write-Log ("open: " + $_.Exception.Message) }
+        Invoke-Open $p.open
         $script:popup = $null; Update-Island; return
     }
     if ($script:dismissKey) { $script:dismissed[$script:dismissKey] = 1; Update-Island }
