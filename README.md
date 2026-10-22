@@ -151,7 +151,7 @@ Options added by future updates are filled in automatically.
 | `sleepAfterMinutes` | `5` | The companion falls asleep after this long without mouse or keyboard (0 = never) |
 | `weatherCity` | `London` | Your city for the weather button, from Open-Meteo (free, no account). Or tray menu → Weather city |
 | `updateCheck` | `true` | Look for a newer release once a day (nothing installs without your click) |
-| `updateRepo` | `kilicaslanalper/windows-notch` | The GitHub repo releases come from |
+| `updateRepo` | `vitaans/windows-notch` | The GitHub repo releases come from |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
 | `statsItems` | `cpu,gpu,ram,weather` | Which stats show while idle, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed), `weather`. Easiest from the tray menu → Idle stats |
 | `mascot` | `Charlie` | `off`, Sprout in a color (`cloud`, `clay`, `honey`, `sage`, `ocean`, `plum`) or a folder name in `custom images` |

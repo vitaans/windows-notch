@@ -104,7 +104,7 @@ $script:cfg = [ordered]@{
     sleepAfterMinutes  = 5          # the companion falls asleep after this long without mouse or keyboard (0 = never)
     weatherCity        = 'London'   # a city name to show the weather for; empty = off
     updateCheck        = $true      # once a day, look for a newer release on GitHub (you're asked before anything installs)
-    updateRepo         = 'kilicaslanalper/windows-notch'   # where releases come from
+    updateRepo         = 'vitaans/windows-notch'   # where releases come from
     stats              = $true      # when nothing else is on, show system stats in the pill
     statsItems         = 'cpu,gpu,ram,weather'   # any of cpu, gpu, ram, net, weather, in the order you want them (tray menu > Idle stats)
     mascot             = 'Charlie'  # off, Sprout in a color (cloud, clay, honey, sage, ocean, plum) or a folder name in custom images
@@ -124,6 +124,9 @@ function Read-Config {
         $names = @($j.PSObject.Properties | ForEach-Object { $_.Name })
         $j.PSObject.Properties | ForEach-Object { $script:cfg[$_.Name] = $_.Value }
         $script:cfgMissing = @($script:cfgDefaults.Keys | Where-Object { $names -notcontains $_ }).Count -gt 0
+        if ($script:cfg.updateRepo -eq 'kilicaslanalper/windows-notch') {   # the GitHub account was renamed
+            $script:cfg.updateRepo = 'vitaans/windows-notch'; $script:cfgMissing = $true
+        }
         return $true
     } catch { Write-Log ("settings.json: " + $_.Exception.Message); return $false }
 }
