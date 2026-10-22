@@ -1804,6 +1804,11 @@ function Show-Side($p) {
     $c = New-Color ([string]$p.color)
     $uiSideGlyph.Foreground = New-Object System.Windows.Media.SolidColorBrush $c
     $uiSideDot.Fill = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(56, $c.R, $c.G, $c.B))
+    # glow only when the island has one (glowStrength above 0), in the notice's color
+    if ($script:glowK -gt 0) {
+        if (-not $uiSide.Effect) { $uiSide.Effect = New-Object System.Windows.Media.Effects.DropShadowEffect -Property @{ BlurRadius = 30; ShadowDepth = 0 } }
+        $uiSide.Effect.Color = $c; $uiSide.Effect.Opacity = 0.45 * $script:glowK
+    } else { $uiSide.Effect = $null }
     $uiSideTitle.Text = $p.title
     $uiSideSub.Text = $p.sub; $uiSideSub.Visibility = if ($p.sub) { 'Visible' } else { 'Collapsed' }
     $uiSideValue.Text = $p.value; $uiSideValue.Visibility = if ($p.value) { 'Visible' } else { 'Collapsed' }
