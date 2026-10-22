@@ -60,15 +60,24 @@ notch timer 25            starts a 25 minute timer
 
 Tray menu → **Timer**: 5 / 10 / 15 / 30 minutes, or a Pomodoro (focus, then a break). It counts down in the island with a ring, and in the fullscreen notch.
 
+## Settings
+
+Right-click the tray icon → **Settings...** (or double-click the tray icon, or run `Settings.cmd`).
+Every option is there with a short explanation, grouped into pages: General, Look, Notices,
+Fullscreen, Stats and weather, Timer and Animations. Changes apply right away, and
+**Reset this page** puts a page back to its defaults.
+
+![Settings window](docs/settings.png)
+
 ## Tray menu
 
-Play a test run, Sound, Show while Claude works, Now playing, Click through,
+Settings, Play a test run, Sound, Show while Claude works, Now playing, Click through,
 Compact notch in fullscreen, System stats when idle, Companion,
 Start with Windows, Clear stuck sessions, Open island folder, Restart, Quit.
 
 ## settings.json
 
-Open it in any text editor, change a value, save; the island updates within ~2 seconds.
+The settings window writes this file; you can also open it in any text editor, change a value, save; the island updates within ~2 seconds.
 If you make a typo the island keeps the last good settings and notes it in `state\island.log`.
 Options added by future updates are filled in automatically.
 
@@ -153,6 +162,10 @@ Options added by future updates are filled in automatically.
 buttons under the top row stay in the same place, left to right: music and volume controls (click or
 drag the bar, scroll to adjust, the speaker mutes), the weather (now and the next hours), system
 stats, and notifications.
+
+**Notices while busy**: when a notice arrives while Claude is working, music is playing or a
+timer runs, the island slides left and the notice shows in its own bubble on the right for a few
+seconds. That bubble can't be clicked, and the island opens again once it's back in place.
 
 **Notifications**: the bell keeps a list of past notices, newest first: Claude tasks finishing or
 needing your input, downloads, screenshots, devices, network, battery, GitHub and your own `notch`

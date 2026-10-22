@@ -369,6 +369,33 @@ try {
   <Grid x:Name="RootGrid" Margin="36,12,36,36">
     <Grid.LayoutTransform><ScaleTransform x:Name="RootScale" ScaleX="1" ScaleY="1"/></Grid.LayoutTransform>
     <Grid x:Name="PeekHost">
+    <!-- Side bubble: a new notice while the island is busy, to the right of the pill (which moves
+         left to make room). Never clickable -->
+    <Border x:Name="Side" HorizontalAlignment="Center" VerticalAlignment="Top" CornerRadius="24" BorderBrush="#26FFFFFF"
+            BorderThickness="1" Opacity="0" IsHitTestVisible="False" Visibility="Collapsed" MaxWidth="260"
+            RenderTransformOrigin="0,0.5">
+      <Border.RenderTransform>
+        <TransformGroup><ScaleTransform ScaleX="0.6" ScaleY="0.6"/><TranslateTransform/></TransformGroup>
+      </Border.RenderTransform>
+      <Border.Effect><DropShadowEffect x:Name="SideGlow" Color="#FFFFFF" BlurRadius="30" ShadowDepth="0" Opacity="0.3"/></Border.Effect>
+      <StackPanel Orientation="Horizontal" Margin="10,8,16,8" MinHeight="34">
+        <Grid Width="28" Height="28" VerticalAlignment="Center">
+          <Ellipse x:Name="SideDot" Width="26" Height="26" Fill="#33FFFFFF"/>
+          <TextBlock x:Name="SideGlyph" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Foreground="#FFFFFFFF"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Grid>
+        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+          <TextBlock x:Name="SideTitle" Foreground="#FFFFFFFF" FontFamily="Segoe UI Variable Display, Segoe UI"
+                     FontSize="13" FontWeight="SemiBold" MaxWidth="180" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="SideSub" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
+                     FontSize="11" Margin="0,1,0,0" MaxWidth="180" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+        <TextBlock x:Name="SideValue" Foreground="#CCFFFFFF" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                   Margin="10,0,0,0" VerticalAlignment="Center"/>
+      </StackPanel>
+    </Border>
+    <Grid x:Name="PillHost" HorizontalAlignment="Center" VerticalAlignment="Top">
+    <Grid.RenderTransform><TranslateTransform x:Name="PillShift"/></Grid.RenderTransform>
     <Border x:Name="Pill" Background="Transparent" CornerRadius="24" BorderBrush="#26FFFFFF"
             HorizontalAlignment="Center" VerticalAlignment="Top"
             BorderThickness="1" Padding="0" Opacity="0"
@@ -644,6 +671,7 @@ try {
       </Grid>
     </Border>
     </Grid>
+    </Grid>
     <!-- Click-through hint, shown under the pill after hovering it for a while -->
     <Border x:Name="Hint" HorizontalAlignment="Center" VerticalAlignment="Top" Background="#E60B0B0D"
             CornerRadius="9" Padding="10,4,10,5" Opacity="0" IsHitTestVisible="False">
@@ -663,7 +691,8 @@ foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText'
                'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
                'StatsPanel','StatLines','Tools','ToolsSpace','WeatherPanel','WxIcon','WxTemp','WxHiLo','WxCond','WxCity','WxHours','BtnWeatherPanel',
                'Zzz','PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel',
-               'BtnNotifPanel','NotifDot','NotifPanel','BtnNotifClear','NotifScroll','NotifRows') {
+               'BtnNotifPanel','NotifDot','NotifPanel','BtnNotifClear','NotifScroll','NotifRows',
+               'Side','SideGlow','SideDot','SideGlyph','SideTitle','SideSub','SideValue','PillShift') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -788,6 +817,10 @@ function Apply-Appearance {
         $cr = Clamp $script:cfg.cornerRadius 0 40
         $uiPill.CornerRadius = New-Object System.Windows.CornerRadius $cr
         foreach ($l in $uiGlass, $uiTint) { $l.RadiusX = [math]::Max(0, $cr - 1); $l.RadiusY = [math]::Max(0, $cr - 1) }
+        # the side bubble has no glass, so it's a little more solid to stay readable
+        $sa = [byte][math]::Round(255 * [math]::Max(0.75, (Clamp $script:cfg.backgroundOpacity 0 1)))
+        $uiSide.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb($sa, $c.R, $c.G, $c.B))
+        $uiSide.BorderBrush = $uiPill.BorderBrush; $uiSide.CornerRadius = $uiPill.CornerRadius
         $k = Clamp $script:cfg.size 0.5 2.5
         $uiRootScale.ScaleX = $k; $uiRootScale.ScaleY = $k
         $uiRootGrid.Margin = New-Object System.Windows.Thickness(36, (12 + (Clamp $script:cfg.offsetY 0 2000) / $k), 36, 36)
@@ -1360,6 +1393,7 @@ function Hide-Pill {
     $script:shown = $false
     $script:hover = $false
     foreach ($p in $uiDetails, $uiMusicDetails, $uiStatsPanel, $uiWeatherPanel, $uiNotifPanel, $uiTools) { $p.Visibility = 'Collapsed'; $p.Tag = '' }
+    Hide-Side $true
     $script:panel = ''; Set-Dark $false
     $uiPill.IsHitTestVisible = $false
     $ease = New-Object System.Windows.Media.Animation.CubicEase
@@ -1716,7 +1750,7 @@ function Show-Popup([string]$key, $glyph, [string]$title, [string]$sub = '', [st
     $same = $script:popup -and $script:popup.key -eq $key
     $script:popup = @{ key = $key; glyph = [string]$(if ($glyph -is [int]) { [char]$glyph } else { $glyph }); title = $title; sub = $sub
                        color = $color; until = $now + [int]($seconds * 1000); bar = $bar; value = $value; image = $image; open = $open
-                       at = $(if ($same) { $script:popup.at } else { $now }) }
+                       at = $(if ($same) { $script:popup.at } else { $now }); side = $(if ($same) { $script:popup.side } else { $null }) }
     if (-not $same -and @('volume', 'brightness') -notcontains $key) { Mascot-Hop 'perk' }
 }
 function Get-Popup($now) {
@@ -1755,6 +1789,67 @@ function Set-Ring([double]$frac, [string]$color) {
     $uiPopRing.Data = [System.Windows.Media.Geometry]::Parse(('M14,1.5 A12.5,12.5 0 {0} 1 {1},{2}' -f $(if ($f -gt 0.5) { 1 } else { 0 }), $x.ToString($INV), $y.ToString($INV)))
     $uiPopRing.Stroke = New-Brush $color
 }
+# ---- side bubble ------------------------------------------------------------
+# A notice that arrives while the island is busy (Claude, music, a timer) doesn't take the pill
+# over: the pill slides left and the notice pops up in its own bubble on the right, then goes
+# away and the pill slides back. The island can't be opened until it's back in place.
+$script:sideOpen = $false; $script:sideKey = ''; $script:sideBlockUntil = 0; $script:wantSide = $null
+$SideScale = $uiSide.RenderTransform.Children[0]; $SideMove = $uiSide.RenderTransform.Children[1]
+function Show-Side($p) {
+    $uiSideGlyph.Text = $p.glyph
+    $c = New-Color ([string]$p.color)
+    $uiSideGlyph.Foreground = New-Object System.Windows.Media.SolidColorBrush $c
+    $uiSideDot.Fill = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(56, $c.R, $c.G, $c.B))
+    $uiSideGlow.Color = $c
+    $uiSideTitle.Text = $p.title
+    $uiSideSub.Text = $p.sub; $uiSideSub.Visibility = if ($p.sub) { 'Visible' } else { 'Collapsed' }
+    $uiSideValue.Text = $p.value; $uiSideValue.Visibility = if ($p.value) { 'Visible' } else { 'Collapsed' }
+    $uiSide.Visibility = 'Visible'
+    $uiSide.Measure((New-Object System.Windows.Size([double]::PositiveInfinity, [double]::PositiveInfinity)))
+    $sw = [math]::Ceiling($uiSide.DesiredSize.Width)
+    $pw = if ($script:sizeTarget) { [double]($script:sizeTarget -split ',')[0] + 2 } else { $uiPill.ActualWidth }
+    $gap = 10
+    $pillTo = - ($sw + $gap) / 2; $sideTo = ($pw + $gap) / 2
+    $key = "$sw|$pw"
+    $ms = [math]::Max(1, (Get-Ms 'resizeMs'))
+    if (-not $script:sideOpen) {
+        $script:sideOpen = $true
+        $back = New-Object System.Windows.Media.Animation.BackEase; $back.Amplitude = 0.35; $back.EasingMode = 'EaseOut'
+        Animate $uiPillShift $TransXProp $pillTo $ms (Sine)
+        Animate $SideMove $TransXProp $sideTo ([math]::Max(1, (Get-Ms 'showMs'))) $back ($sideTo - 40)
+        Animate $SideScale $ScaleXProp 1 (Get-Ms 'showMs') $back 0.6
+        Animate $SideScale $ScaleYProp 1 (Get-Ms 'showMs') $back 0.6
+        Animate $uiSide $OpacityProp 1 ([math]::Min(220, $ms)) $null 0
+    } elseif ($key -ne $script:sideKey) {   # the pill or the notice changed size: re-center both
+        Animate $uiPillShift $TransXProp $pillTo $ms (Sine)
+        Animate $SideMove $TransXProp $sideTo $ms (Sine)
+    }
+    $script:sideKey = $key
+}
+function Hide-Side([bool]$instant = $false) {
+    if (-not $script:sideOpen) { return }
+    $script:sideOpen = $false; $script:sideKey = ''
+    $ms = if ($instant) { 0 } else { [math]::Max(1, (Get-Ms 'hideMs')) }
+    if ($ms -le 0) {
+        foreach ($a in @(@($uiPillShift, $TransXProp), @($SideMove, $TransXProp), @($SideScale, $ScaleXProp), @($SideScale, $ScaleYProp), @($uiSide, $OpacityProp))) { Stop-Anim $a[0] $a[1] }
+        $uiPillShift.X = 0; $uiSide.Opacity = 0; $uiSide.Visibility = 'Collapsed'; $script:sideBlockUntil = 0
+        return
+    }
+    $ease = New-Object System.Windows.Media.Animation.CubicEase; $ease.EasingMode = 'EaseIn'
+    $to = $SideMove.X - 40
+    Animate $SideMove $TransXProp $to $ms $ease
+    Animate $SideScale $ScaleXProp 0.6 $ms $ease
+    Animate $SideScale $ScaleYProp 0.6 $ms $ease
+    Animate $uiSide $OpacityProp 0 $ms $ease
+    $back = [math]::Max(1, (Get-Ms 'resizeMs'))
+    Span-Anim $uiPillShift $TransXProp $uiPillShift.X 0 $back 0 1 $null ([int]($ms * 0.5))
+    $script:sideBlockUntil = (Get-Now) + [int]($ms * 0.5) + $back   # opening waits until the pill is back
+}
+function Sync-Side {
+    if ($script:wantSide -and $script:shown -and -not $script:hover) { Show-Side $script:wantSide } else { Hide-Side }
+    if (-not $script:sideOpen -and $uiSide.Opacity -le 0.01 -and (Get-Now) -ge $script:sideBlockUntil) { $uiSide.Visibility = 'Collapsed' }
+}
+
 function Show-PopupNotch($p, $mon) {
     $t = [string]$p.title; if ($p.value) { $t = "$t  $($p.value)" } elseif ($p.sub) { $t = "$t  $DOT  $($p.sub)" }
     if ($t.Length -gt 48) { $t = $t.Substring(0, 47) + $ELL }
@@ -2623,7 +2718,7 @@ function Update-Island {
 
         $fs = Get-Fullscreen
         if ($fs) {
-            Hide-Pill; $script:lastKey = ''
+            Hide-Pill; $script:lastKey = ''; $script:wantSide = $null
             if ($mode -eq 'needs') { Show-Notch $mode $pick $now $fs }
             elseif ($pop) { Show-PopupNotch $pop $fs }
             elseif ($pick) { Show-Notch $mode $pick $now $fs }
@@ -2634,8 +2729,18 @@ function Update-Island {
         }
         Hide-Notch
 
-        # a notice takes over for a few seconds (but never over "needs you", or while expanded)
-        if ($pop -and $mode -ne 'needs' -and -not $script:hover) { Show-PopupView $pop $now; return }
+        # a notice takes over for a few seconds (but never over "needs you", or while expanded).
+        # While something is going on (Claude, music, a timer) it gets its own bubble instead.
+        $script:wantSide = $null
+        if ($pop -and -not $script:hover) {
+            if ($null -eq $pop.side) {
+                $m = $script:music
+                $busy = $pick -or $tv -or ($m -and ($m.playing -or ($script:pausedAt -and ($now - $script:pausedAt) -lt ([int]$script:cfg.musicPausedSeconds * 1000))))
+                $pop.side = [bool]($busy -and $script:shown -and $script:viewKind -ne 'popup')
+            }
+            if ($pop.side) { $script:wantSide = $pop }
+            elseif ($mode -ne 'needs') { Show-PopupView $pop $now; return }
+        }
         if (-not $pick -and $tv) { Show-PopupView $tv $now; return }
 
         if (-not $pick) {
@@ -2692,6 +2797,8 @@ function Update-Island {
         Show-Pill
     } catch {
         Write-Log $_.Exception.Message
+    } finally {
+        try { Sync-Side } catch { Write-Log ("side: " + $_.Exception.Message) }
     }
 }
 
@@ -2762,7 +2869,9 @@ $hoverTimer.Add_Tick({
         } else {
             if (Test-CursorOnPill 0) {
                 $script:hoverIn += 50
-                if ($script:hoverIn -ge 100) { $script:hover = $true; $script:hoverIn = 0; Update-Island }
+                # not while a side bubble is up, or the pill is still sliding back after one
+                if ($script:sideOpen -or (Get-Now) -lt $script:sideBlockUntil) { $script:hoverIn = 0 }
+                elseif ($script:hoverIn -ge 100) { $script:hover = $true; $script:hoverIn = 0; Update-Island }
             } else { $script:hoverIn = 0; $script:sticky = $false }
         }
     } catch { }
@@ -2775,6 +2884,7 @@ $uiPill.Add_PreviewMouseLeftButtonDown({ if ($script:cfg.clickThrough) { $script
 # Click the pill to dismiss "Task complete" / "Needs your input"; click the mascot to say hi
 $uiPill.Add_MouseLeftButtonUp({
     $p = $script:popup
+    if ($script:sideOpen) { return }   # the side bubble isn't clickable, and the pill waits until it's gone
     if ($p -and $p.open) {   # e.g. a screenshot notice: open the file
         Invoke-Open $p.open
         $script:popup = $null; Update-Island; return
@@ -2833,6 +2943,16 @@ function New-Toggle($text, $key, $after = $null) {
     $mi
 }
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
+# The settings window runs on its own (scripts\settings.ps1); it saves settings.json and the
+# island picks the changes up from there
+function Open-Settings {
+    $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    Start-Process -FilePath $psExe -ArgumentList "-NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $PSScriptRoot 'settings.ps1')`"" -WindowStyle Hidden
+}
+$miSettings = New-Object System.Windows.Forms.ToolStripMenuItem 'Settings...'
+$miSettings.Font = New-Object System.Drawing.Font($miSettings.Font, [System.Drawing.FontStyle]::Bold)
+$miSettings.Add_Click({ Open-Settings })
+[void]$menu.Items.Add($miSettings)
 $miTest = New-Object System.Windows.Forms.ToolStripMenuItem 'Play a test run'
 $miTest.Add_Click({ Start-Test })
 [void]$menu.Items.Add($miTest)
@@ -2994,7 +3114,7 @@ $miQuit.Add_Click({
 })
 [void]$menu.Items.Add($miQuit)
 $tray.ContextMenuStrip = $menu
-$tray.Add_DoubleClick({ Start-Test })
+$tray.Add_DoubleClick({ Open-Settings })
 
 # After an update, say so once
 $verFile = Join-Path $StateDir 'version'
