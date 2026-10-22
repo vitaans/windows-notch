@@ -102,7 +102,7 @@ $script:cfg = [ordered]@{
     timerMinutes       = 25         # Pomodoro: focus length (tray menu > Timer)
     breakMinutes       = 5          # Pomodoro: break length
     sleepAfterMinutes  = 5          # the companion falls asleep after this long without mouse or keyboard (0 = never)
-    weatherCity        = ''         # a city name (e.g. Istanbul) to show the weather in the stats; empty = off
+    weatherCity        = ''         # a city name (e.g. London) to show the weather in the stats; empty = off
     updateCheck        = $true      # once a day, look for a newer release on GitHub (you're asked before anything installs)
     updateRepo         = 'kilicaslanalper/windows-notch'   # where releases come from
     stats              = $true      # when nothing else is on, show system stats in the pill
@@ -2985,7 +2985,7 @@ $miIdle.Add_DropDownOpening({
 [void]$menu.Items.Add($miIdle)
 function Ask-WeatherCity {
     Add-Type -AssemblyName Microsoft.VisualBasic
-    $c = [Microsoft.VisualBasic.Interaction]::InputBox('City for the weather (e.g. Istanbul). Type off to turn it off.', 'Windows Notch', [string]$script:cfg.weatherCity)
+    $c = [Microsoft.VisualBasic.Interaction]::InputBox('City for the weather (e.g. London). Type off to turn it off.', 'Windows Notch', [string]$script:cfg.weatherCity)
     if ($c) { $script:cfg.weatherCity = $(if ($c.Trim() -eq 'off') { '' } else { $c.Trim() }); $script:stats.weatherCity = $script:cfg.weatherCity; Save-Config; Update-Island }
 }
 $miCity = New-Object System.Windows.Forms.ToolStripMenuItem 'Weather city...'

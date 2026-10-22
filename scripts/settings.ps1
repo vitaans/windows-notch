@@ -110,7 +110,7 @@ $pages = [ordered]@{
     'Stats and weather' = @(
         (S 'stats' 'System stats when idle' 'When nothing else is on, the island shows your PC''s stats.')
         (S 'statsItems' 'Which stats' 'Pick what shows in the island when idle.' 'stats')
-        (S 'weatherCity' 'Weather city' 'Your city (for example Istanbul) for the weather button. Leave empty for none.' 'text')
+        (S 'weatherCity' 'Weather city' 'Your city (for example London) for the weather button. Leave empty for none.' 'text')
     )
     'Timer' = @(
         (S 'timerMinutes' 'Focus length' 'Pomodoro timer: how long you focus (tray menu > Timer).' 'slider' 5 120 5 'min')

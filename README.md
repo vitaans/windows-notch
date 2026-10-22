@@ -149,7 +149,7 @@ Options added by future updates are filled in automatically.
 | `breakMinutes` | `5` | Pomodoro break length |
 | `popupGitHub` | `true` | Your open pull requests: checks passed / failed, approved, changes requested. Needs the [GitHub CLI](https://cli.github.com) installed and signed in (`gh auth login`) |
 | `sleepAfterMinutes` | `5` | The companion falls asleep after this long without mouse or keyboard (0 = never) |
-| `weatherCity` | `""` | Your city (e.g. `Istanbul`) for the weather button, from Open-Meteo (free, no account). Or tray menu → Weather city |
+| `weatherCity` | `""` | Your city (e.g. `London`) for the weather button, from Open-Meteo (free, no account). Or tray menu → Weather city |
 | `updateCheck` | `true` | Look for a newer release once a day (nothing installs without your click) |
 | `updateRepo` | `kilicaslanalper/windows-notch` | The GitHub repo releases come from |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
