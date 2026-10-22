@@ -46,10 +46,10 @@ if (-not $createdNew) { return }
 # order (with any new options added) and re-read live whenever you save it.
 $script:cfg = [ordered]@{
     # --- look
-    backgroundOpacity  = 0.5        # 0 = fully see-through, 1 = solid
+    backgroundOpacity  = 0.75       # 0 = fully see-through, 1 = solid
     backgroundColor    = '#0B0B0D'
     borderOpacity      = 0.15       # thin outline around the pill
-    glowStrength       = 0.3        # colored glow around the pill, 0 = off
+    glowStrength       = 0          # colored glow around the pill, 0 = off
     textShadow         = $true      # keeps text readable over bright backgrounds
     blur               = $false     # frosted glass behind the pill (while on, the island is left out of screenshots/recordings)
     blurStrength       = 2          # how blurry the glass is, 2 to 20
@@ -380,8 +380,9 @@ try {
       <Border.RenderTransform>
         <TransformGroup><ScaleTransform ScaleX="0.6" ScaleY="0.6"/><TranslateTransform/></TransformGroup>
       </Border.RenderTransform>
-      <Border.Effect><DropShadowEffect x:Name="SideGlow" Color="#FFFFFF" BlurRadius="30" ShadowDepth="0" Opacity="0.3"/></Border.Effect>
       <StackPanel Orientation="Horizontal" Margin="10,8,16,8" MinHeight="34">
+        <!-- no glow here: a dark text shadow keeps it readable over bright windows -->
+        <StackPanel.Effect><DropShadowEffect Color="Black" BlurRadius="6" ShadowDepth="0" Opacity="0.85"/></StackPanel.Effect>
         <Grid Width="28" Height="28" VerticalAlignment="Center">
           <Ellipse x:Name="SideDot" Width="26" Height="26" Fill="#33FFFFFF"/>
           <TextBlock x:Name="SideGlyph" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Foreground="#FFFFFFFF"
@@ -390,7 +391,7 @@ try {
         <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
           <TextBlock x:Name="SideTitle" Foreground="#FFFFFFFF" FontFamily="Segoe UI Variable Display, Segoe UI"
                      FontSize="13" FontWeight="SemiBold" MaxWidth="180" TextTrimming="CharacterEllipsis"/>
-          <TextBlock x:Name="SideSub" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
+          <TextBlock x:Name="SideSub" Foreground="#CCFFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
                      FontSize="11" Margin="0,1,0,0" MaxWidth="180" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
         <TextBlock x:Name="SideValue" Foreground="#CCFFFFFF" FontFamily="Cascadia Mono, Consolas" FontSize="12"
@@ -468,7 +469,7 @@ try {
               <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                 <TextBlock x:Name="TitleText" Foreground="#FFFFFFFF" FontFamily="Segoe UI Variable Display, Segoe UI"
                            FontSize="13.5" FontWeight="SemiBold" MaxWidth="320" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="SubText" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
+                <TextBlock x:Name="SubText" Foreground="#CCFFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
                            FontSize="11.5" Margin="0,1,0,0" MaxWidth="320" TextTrimming="CharacterEllipsis"/>
               </StackPanel>
               <TextBlock x:Name="TimerText" Foreground="#80FFFFFF" FontFamily="Cascadia Mono, Consolas"
@@ -497,7 +498,7 @@ try {
               <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                 <TextBlock x:Name="PopTitle" Foreground="#FFFFFFFF" FontFamily="Segoe UI Variable Display, Segoe UI"
                            FontSize="13.5" FontWeight="SemiBold" MaxWidth="280" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="PopSub" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
+                <TextBlock x:Name="PopSub" Foreground="#CCFFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
                            FontSize="11.5" Margin="0,1,0,0" MaxWidth="280" TextTrimming="CharacterEllipsis"/>
               </StackPanel>
               <Grid x:Name="PopBarGrid" Width="140" Height="4" Margin="14,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
@@ -517,7 +518,7 @@ try {
               <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                 <TextBlock x:Name="MTitle" Foreground="#FFFFFFFF" FontFamily="Segoe UI Variable Display, Segoe UI"
                            FontSize="13" FontWeight="SemiBold" MaxWidth="260" TextTrimming="CharacterEllipsis"/>
-                <TextBlock x:Name="MArtist" Foreground="#99FFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
+                <TextBlock x:Name="MArtist" Foreground="#CCFFFFFF" FontFamily="Segoe UI Variable Text, Segoe UI"
                            FontSize="11.5" Margin="0,1,0,0" MaxWidth="260" TextTrimming="CharacterEllipsis"/>
               </StackPanel>
               <StackPanel x:Name="Eq" Orientation="Horizontal" Height="14" Margin="16,0,0,0" VerticalAlignment="Center">
@@ -695,7 +696,7 @@ foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText'
                'StatsPanel','StatLines','Tools','ToolsSpace','WeatherPanel','WxIcon','WxTemp','WxHiLo','WxCond','WxCity','WxHours','BtnWeatherPanel',
                'Zzz','PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel',
                'BtnNotifPanel','NotifDot','NotifPanel','BtnNotifClear','NotifScroll','NotifRows',
-               'Side','SideGlow','SideDot','SideGlyph','SideTitle','SideSub','SideValue','PillShift') {
+               'Side','SideDot','SideGlyph','SideTitle','SideSub','SideValue','PillShift') {
     Set-Variable -Name ("ui" + $n) -Value $win.FindName($n) -Scope Script
 }
 $scale     = $uiPill.RenderTransform
@@ -821,7 +822,7 @@ function Apply-Appearance {
         $uiPill.CornerRadius = New-Object System.Windows.CornerRadius $cr
         foreach ($l in $uiGlass, $uiTint) { $l.RadiusX = [math]::Max(0, $cr - 1); $l.RadiusY = [math]::Max(0, $cr - 1) }
         # the side bubble has no glass, so it's a little more solid to stay readable
-        $sa = [byte][math]::Round(255 * [math]::Max(0.75, (Clamp $script:cfg.backgroundOpacity 0 1)))
+        $sa = [byte][math]::Round(255 * [math]::Max(0.88, (Clamp $script:cfg.backgroundOpacity 0 1)))
         $uiSide.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb($sa, $c.R, $c.G, $c.B))
         $uiSide.BorderBrush = $uiPill.BorderBrush; $uiSide.CornerRadius = $uiPill.CornerRadius
         $k = Clamp $script:cfg.size 0.5 2.5
@@ -1803,7 +1804,6 @@ function Show-Side($p) {
     $c = New-Color ([string]$p.color)
     $uiSideGlyph.Foreground = New-Object System.Windows.Media.SolidColorBrush $c
     $uiSideDot.Fill = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb(56, $c.R, $c.G, $c.B))
-    $uiSideGlow.Color = $c
     $uiSideTitle.Text = $p.title
     $uiSideSub.Text = $p.sub; $uiSideSub.Visibility = if ($p.sub) { 'Visible' } else { 'Collapsed' }
     $uiSideValue.Text = $p.value; $uiSideValue.Visibility = if ($p.value) { 'Visible' } else { 'Collapsed' }

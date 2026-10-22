@@ -85,10 +85,10 @@ Options added by future updates are filled in automatically.
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `backgroundOpacity` | `0.5` | Darkness on top of the blur: 0 = clear glass, 1 = solid |
+| `backgroundOpacity` | `0.75` | Darkness on top of the blur: 0 = clear glass, 1 = solid |
 | `backgroundColor` | `#0B0B0D` | Pill color |
 | `borderOpacity` | `0.15` | Thin outline around the pill, 0 = none |
-| `glowStrength` | `0.3` | Colored glow around the pill, 0 = off, up to 2 |
+| `glowStrength` | `0` | Colored glow around the pill, 0 = off, up to 2 |
 | `textShadow` | `true` | Keeps text readable over bright windows |
 | `blur` | `false` | Frosted glass behind the pill. While it's on, the island is left out of screenshots and recordings (so the glass never sees itself); set `false` to have it show up in them |
 | `blurStrength` | `2` | How blurry the glass is, 2 to 20 |
