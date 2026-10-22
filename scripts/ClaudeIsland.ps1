@@ -46,30 +46,30 @@ if (-not $createdNew) { return }
 # order (with any new options added) and re-read live whenever you save it.
 $script:cfg = [ordered]@{
     # --- look
-    backgroundOpacity  = 0.55       # 0 = fully see-through, 1 = solid
+    backgroundOpacity  = 0.5        # 0 = fully see-through, 1 = solid
     backgroundColor    = '#0B0B0D'
     borderOpacity      = 0.15       # thin outline around the pill
-    glowStrength       = 1.0        # colored glow around the pill, 0 = off
+    glowStrength       = 0.3        # colored glow around the pill, 0 = off
     textShadow         = $true      # keeps text readable over bright backgrounds
-    blur               = $true      # frosted glass behind the pill (while on, the island is left out of screenshots/recordings)
-    blurStrength       = 8          # how blurry the glass is, 2 to 20
+    blur               = $false     # frosted glass behind the pill (while on, the island is left out of screenshots/recordings)
+    blurStrength       = 2          # how blurry the glass is, 2 to 20
     blurRefreshMs      = 100        # how often the glass refreshes what's behind it
-    solidDuringResize  = 'grow'     # with blur on, turn the pill solid while it resizes: grow, both or off
-    solidFadeMs        = 150        # how long the fade to solid (before) and back to glass (after) takes
+    solidDuringResize  = 'both'     # with blur on, turn the pill solid while it resizes: grow, both or off
+    solidFadeMs        = 60         # how long the fade to solid (before) and back to glass (after) takes
     size               = 1.0        # scale everything, e.g. 0.85 smaller, 1.2 bigger
-    cornerRadius       = 24
+    cornerRadius       = 14
     offsetX            = 0          # move left (-) / right (+) from the center, in pixels
     offsetY            = 0          # move down from the top edge, in pixels
     # --- transitions (milliseconds, 0 = instant)
     fps                = 0          # animation frame rate; 0 = match your fastest monitor's refresh rate
     showMs             = 460        # pop in
-    hideMs             = 220        # shrink away
-    switchMs           = 380        # little bounce when the content changes
-    resizeMs           = 320        # pill smoothly changing size when its content changes
-    resizeOverlap      = 0.6        # 0 = width first, then height; 1 = both together; 0.8 = height starts when width is 20% done
+    hideMs             = 460        # shrink away
+    switchMs           = 360        # little bounce when the content changes
+    resizeMs           = 360        # pill smoothly changing size when its content changes
+    resizeOverlap      = 0.1        # 0 = width first, then height; 1 = both together; 0.8 = height starts when width is 20% done
     textMs             = 260        # changed text cross-fades (old out, new in)
     expandMs           = 360        # hover panel opening/closing: widens first, then grows down (total)
-    musicTrackMs       = 250        # cross-fade between songs
+    musicTrackMs       = 1000       # cross-fade between songs
     # --- behavior
     sound              = $true      # soft chime on done / needs input
     chimeAfterSeconds  = 20         # only chime for tasks that ran at least this long
@@ -102,11 +102,11 @@ $script:cfg = [ordered]@{
     timerMinutes       = 25         # Pomodoro: focus length (tray menu > Timer)
     breakMinutes       = 5          # Pomodoro: break length
     sleepAfterMinutes  = 5          # the companion falls asleep after this long without mouse or keyboard (0 = never)
-    weatherCity        = ''         # a city name (e.g. London) to show the weather in the stats; empty = off
+    weatherCity        = 'London'   # a city name to show the weather for; empty = off
     updateCheck        = $true      # once a day, look for a newer release on GitHub (you're asked before anything installs)
     updateRepo         = 'kilicaslanalper/windows-notch'   # where releases come from
     stats              = $true      # when nothing else is on, show system stats in the pill
-    statsItems         = 'cpu,gpu,ram,net'   # any of cpu, gpu, ram, net, weather, in the order you want them (tray menu > Idle stats)
+    statsItems         = 'cpu,gpu,ram,weather'   # any of cpu, gpu, ram, net, weather, in the order you want them (tray menu > Idle stats)
     mascot             = 'Charlie'  # off, Sprout in a color (cloud, clay, honey, sage, ocean, plum) or a folder name in custom images
     # --- colors
     accent             = '#D97857'  # working (Claude coral)

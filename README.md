@@ -85,18 +85,18 @@ Options added by future updates are filled in automatically.
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `backgroundOpacity` | `0.55` | Darkness on top of the blur: 0 = clear glass, 1 = solid |
+| `backgroundOpacity` | `0.5` | Darkness on top of the blur: 0 = clear glass, 1 = solid |
 | `backgroundColor` | `#0B0B0D` | Pill color |
 | `borderOpacity` | `0.15` | Thin outline around the pill, 0 = none |
-| `glowStrength` | `1.0` | Colored glow around the pill, 0 = off, up to 2 |
+| `glowStrength` | `0.3` | Colored glow around the pill, 0 = off, up to 2 |
 | `textShadow` | `true` | Keeps text readable over bright windows |
-| `blur` | `true` | Frosted glass behind the pill. While it's on, the island is left out of screenshots and recordings (so the glass never sees itself); set `false` to have it show up in them |
-| `blurStrength` | `8` | How blurry the glass is, 2 to 20 |
+| `blur` | `false` | Frosted glass behind the pill. While it's on, the island is left out of screenshots and recordings (so the glass never sees itself); set `false` to have it show up in them |
+| `blurStrength` | `2` | How blurry the glass is, 2 to 20 |
 | `blurRefreshMs` | `100` | How often the glass refreshes what's behind it (lower = smoother, a bit more CPU) |
-| `solidDuringResize` | `grow` | With blur on, the pill turns solid while it changes size: fade to solid, resize, fade back to glass. `grow` = only when getting bigger, `both` = bigger and smaller, `off` = never |
-| `solidFadeMs` | `150` | How long the fade to solid (before the resize) and back to glass (after) takes |
+| `solidDuringResize` | `both` | With blur on, the pill turns solid while it changes size: fade to solid, resize, fade back to glass. `grow` = only when getting bigger, `both` = bigger and smaller, `off` = never |
+| `solidFadeMs` | `60` | How long the fade to solid (before the resize) and back to glass (after) takes |
 | `size` | `1.0` | Scales everything (0.5 to 2.5), e.g. `0.85` or `1.2` |
-| `cornerRadius` | `24` | 24 is a full pill, lower is squarer |
+| `cornerRadius` | `14` | 24 is a full pill, lower is squarer |
 | `offsetX` | `0` | Move left (negative) or right from the center, in pixels |
 | `offsetY` | `0` | Move down from the top edge, in pixels |
 
@@ -106,13 +106,13 @@ Options added by future updates are filled in automatically.
 | --- | --- | --- |
 | `fps` | `0` | Animation frame rate. `0` matches your fastest monitor's refresh rate (WPF would otherwise cap at 60) |
 | `showMs` | `460` | The pill popping in when it appears (Claude starts working, a song starts) |
-| `hideMs` | `220` | The pill shrinking away when there's nothing to show |
-| `switchMs` | `380` | Little bounce when the content changes |
-| `resizeMs` | `320` | The pill gliding to a new size when its content changes |
-| `resizeOverlap` | `0.6` | How the width and height steps overlap (for hover and every resize): `0` = width first, then height; `1` = both at once; `0.8` = height starts when width is 20% done. Closing runs in reverse (height first) |
+| `hideMs` | `460` | The pill shrinking away when there's nothing to show |
+| `switchMs` | `360` | Little bounce when the content changes |
+| `resizeMs` | `360` | The pill gliding to a new size when its content changes |
+| `resizeOverlap` | `0.1` | How the width and height steps overlap (for hover and every resize): `0` = width first, then height; `1` = both at once; `0.8` = height starts when width is 20% done. Closing runs in reverse (height first) |
 | `textMs` | `260` | Changed text cross-fades: old fades out, new fades in |
 | `expandMs` | `360` | Hover panel opening and closing (total time), eased in-out sine |
-| `musicTrackMs` | `250` | Fade between songs |
+| `musicTrackMs` | `1000` | Fade between songs |
 
 **Behavior**
 
@@ -149,11 +149,11 @@ Options added by future updates are filled in automatically.
 | `breakMinutes` | `5` | Pomodoro break length |
 | `popupGitHub` | `true` | Your open pull requests: checks passed / failed, approved, changes requested. Needs the [GitHub CLI](https://cli.github.com) installed and signed in (`gh auth login`) |
 | `sleepAfterMinutes` | `5` | The companion falls asleep after this long without mouse or keyboard (0 = never) |
-| `weatherCity` | `""` | Your city (e.g. `London`) for the weather button, from Open-Meteo (free, no account). Or tray menu → Weather city |
+| `weatherCity` | `London` | Your city for the weather button, from Open-Meteo (free, no account). Or tray menu → Weather city |
 | `updateCheck` | `true` | Look for a newer release once a day (nothing installs without your click) |
 | `updateRepo` | `kilicaslanalper/windows-notch` | The GitHub repo releases come from |
 | `stats` | `true` | When nothing else is on, the pill shows system stats |
-| `statsItems` | `cpu,gpu,ram,net` | Which stats show while idle, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed), `weather`. Easiest from the tray menu → Idle stats |
+| `statsItems` | `cpu,gpu,ram,weather` | Which stats show while idle, in order: `cpu`, `gpu`, `ram`, `net` (download / upload speed), `weather`. Easiest from the tray menu → Idle stats |
 | `mascot` | `Charlie` | `off`, Sprout in a color (`cloud`, `clay`, `honey`, `sage`, `ocean`, `plum`) or a folder name in `custom images` |
 
 **Colors**: `accent` (working), `doneColor`, `needsColor`.
