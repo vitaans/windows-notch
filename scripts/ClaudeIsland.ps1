@@ -691,7 +691,7 @@ $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $x
 foreach ($n in 'Pill','Ring','Dot','IconBg','Check','Bang','TitleText','SubText','TimerText','Badge','BadgeText',
                'Details','Rows','ClaudeRow','MusicRow','Art','ArtNote','MTitle','MArtist','Eq','MusicDetails',
                'ProgGrid','ProgTrack','ProgFill','TimeGrid','PosText','DurText','BtnPrev','BtnPlay','BtnNext','PlayGlyph',
-               'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
+               'Mascot','MLight','MShade','Eyes','EyeL','EyeR','HappyL','HappyR','Blob','CompImg','RootGrid','RootScale','PillHost','Inner','Glass','Tint','SizeHost','PeekHost','Hint','StatsRow',
                'MPanelInfo','MPanelTitle','MPanelArtist','BtnMute','MuteGlyph','VolText','VolGrid','VolTrack','VolFill',
                'StatsPanel','StatLines','Tools','ToolsSpace','WeatherPanel','WxIcon','WxTemp','WxHiLo','WxCond','WxCity','WxHours','BtnWeatherPanel',
                'Zzz','PopupRow','PopDot','PopRing','PopGlyph','PopThumb','PopImg','PopTitle','PopSub','PopBarGrid','PopBarFill','PopValue','BtnMusicPanel','BtnStatsPanel',
@@ -1799,6 +1799,30 @@ function Set-Ring([double]$frac, [string]$color) {
 # away and the pill slides back. The island can't be opened until it's back in place.
 $script:sideOpen = $false; $script:sideKey = ''; $script:sideBlockUntil = 0; $script:wantSide = $null
 $SideScale = $uiSide.RenderTransform.Children[0]; $SideMove = $uiSide.RenderTransform.Children[1]
+# A slide that ends between two screen pixels leaves the text resampled and blurry, so the end
+# offset is nudged until the element's left edge lands on a whole device pixel (any DPI or size)
+function Snap-X($el, [double]$dx) {
+    try {
+        $par = [System.Windows.Media.VisualTreeHelper]::GetParent($el)
+        $o = [System.Windows.Media.VisualTreeHelper]::GetOffset($el)
+        $a = $par.PointToScreen((New-Object System.Windows.Point($o.X, $o.Y)))
+        $s = $par.PointToScreen((New-Object System.Windows.Point(($o.X + 1), $o.Y))).X - $a.X
+        if ($s -le 0) { return $dx }
+        $dev = $a.X + $dx * $s
+        return $dx + ([math]::Round($dev) - $dev) / $s
+    } catch { return $dx }
+}
+# once the slide is over (the pill may still have been resizing), snap both where they stopped
+$sideSnap = New-Object System.Windows.Threading.DispatcherTimer
+$sideSnap.Add_Tick({
+    $sideSnap.Stop()
+    if (-not $script:sideOpen) { return }
+    try {
+        foreach ($p in @(@($uiPillHost, $uiPillShift), @($uiSide, $SideMove))) {
+            $v = $p[1].X; Stop-Anim $p[1] $TransXProp; $p[1].X = Snap-X $p[0] $v
+        }
+    } catch { Write-Log ("side snap: " + $_.Exception.Message) }
+})
 function Show-Side($p) {
     $uiSideGlyph.Text = $p.glyph
     $c = New-Color ([string]$p.color)
@@ -1818,8 +1842,13 @@ function Show-Side($p) {
     $pw = if ($script:sizeTarget) { [double]($script:sizeTarget -split ',')[0] + 2 } else { $uiPill.ActualWidth }
     $gap = 10
     $pillTo = - ($sw + $gap) / 2; $sideTo = ($pw + $gap) / 2
+    $win.UpdateLayout()   # place the bubble now so its pixel offset is known
+    $pillTo = Snap-X $uiPillHost $pillTo; $sideTo = Snap-X $uiSide $sideTo
     $key = "$sw|$pw"
     $ms = [math]::Max(1, (Get-Ms 'resizeMs'))
+    if ($key -ne $script:sideKey) {
+        $sideSnap.Stop(); $sideSnap.Interval = [TimeSpan]::FromMilliseconds([math]::Max($ms, (Get-Ms 'showMs')) + 60); $sideSnap.Start()
+    }
     if (-not $script:sideOpen) {
         $script:sideOpen = $true
         $back = New-Object System.Windows.Media.Animation.BackEase; $back.Amplitude = 0.35; $back.EasingMode = 'EaseOut'
